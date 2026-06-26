@@ -21,7 +21,7 @@ Pipeline:
 from __future__ import annotations
 
 from agentsync.enforcer.enforcer import SkillBuilderEnforcer
-from agentsync.enforcer.models import ObligationStatus
+from agentsync.enforcer.models import ObligationStatus, SkillObligation
 from agentsync.skills.skill_schema import ValidationLevel, validate_skill_md
 
 from .models import PromotionResult, PromotionState, SkillCandidate
@@ -57,8 +57,14 @@ class PromotionAdapter:
             KeyError:   token is unknown to the Enforcer.
             ValueError: obligation is not in SUBMITTED state.
         """
-        # Step 1: gate on token state (raises KeyError / ValueError as documented)
-        obl = self._enforcer._require_status(token, {ObligationStatus.SUBMITTED})
+        # Step 1: gate on token state via the Enforcer's public surface
+        obl: SkillObligation | None = self._enforcer.get_obligation(token)
+        if obl is None:
+            raise KeyError(f"unknown skill_obligation_token: {token}")
+        if obl.status is not ObligationStatus.SUBMITTED:
+            raise ValueError(
+                f"obligation {token} is {obl.status.value}; expected submitted"
+            )
 
         # Step 2: validate SKILL.md — never call Stele on an invalid candidate
         validation = validate_skill_md(

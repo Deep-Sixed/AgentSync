@@ -163,6 +163,12 @@ class SkillBuilderEnforcer:
         })
         return append_obligation(updated, self._path)
 
+    # --- public read ---------------------------------------------------------
+
+    def get_obligation(self, token: str) -> Optional[SkillObligation]:
+        """Return the current state of one token, or None if unknown."""
+        return get_obligation(token, self._path)
+
     # --- helpers -------------------------------------------------------------
 
     def _require_status(self, token: str, allowed: set) -> SkillObligation:
