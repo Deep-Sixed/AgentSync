@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import uuid as _uuid_mod
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -97,6 +98,15 @@ class EvecorStelePort:
 
         On any store error: mark pending record FAILED, return state=FAILED.
         """
+        # Validate run_id — obligations always mint UUIDs; catching bad callers early
+        # prevents a ledger record with an un-joinable key.
+        try:
+            _uuid_mod.UUID(run_id)
+        except (ValueError, AttributeError):
+            raise ValueError(
+                f"run_id must be a valid UUID string; got {run_id!r}"
+            )
+
         source_hash = _sha256(candidate.content)
 
         # Step 1: write artifact to disk
@@ -126,6 +136,22 @@ class EvecorStelePort:
                 record_id="",
                 run_id=run_id,
                 state=PromotionState.FAILED,
+            )
+
+        # Duplicate guard: duplicate_policy="ignore" may return an existing
+        # COMMITTED record (same artifact_hash, different run_id).
+        # Skip the commit step — the artifact is already in the ledger.
+        if record.state is ArtifactState.COMMITTED:
+            logger.info(
+                "evecor_stele_port: duplicate content already committed "
+                "record_id=%s run_id=%s",
+                record.record_id, run_id,
+            )
+            return PromotionArtifact(
+                artifact_hash=record.artifact_hash,
+                record_id=record.record_id,
+                run_id=run_id,
+                state=PromotionState.COMMITTED,
             )
 
         # Step 3: commit pending → committed
