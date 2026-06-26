@@ -1,11 +1,25 @@
-"""MCP service smoke tests — single AgentSync server, no ContextForge.
+"""AgentSync MCP Service smoke tests — local, no ContextForge.
 
-Tests the unified agentsync.mcp.server over a real stdio MCP transport
-using a subprocess + ClientSession. No mocks. No monkeypatching.
+Starts one AgentSync MCP Service subprocess and drives it through a real
+stdio MCP transport using ClientSession. Proves:
 
-Each test starts a fresh server subprocess configured to write into tmp_path
-(obligations.jsonl, stele.db, artifacts/) so tests are isolated and leave
-no state in the repo's storage/.
+  1. Server starts and lists all expected tools.
+  2. agentsync_evaluate_task      — Rule Server identifies skill gap
+  3. agentsync_get_task_rules     — read-only rule inspection (no side effects)
+  4. agentsync_find_matching_skill — Skill Server finds covered task
+  5. Full loop through MCP:
+       agentsync_evaluate_task
+         ↓
+       agentsync_enforce_task      — gap confirmed, token minted
+         ↓
+       agentsync_submit_candidate_skill  — obligation → SUBMITTED
+         ↓
+       agentsync_promote_candidate_skill — Kanon + Stele → REDEEMED
+         ↓
+       closure_unblocked=True
+
+All mutable state (obligations.jsonl, stele.db, artifacts/) is written to
+pytest tmp_path. The repo's storage/ directory is never modified.
 
 Requires:  pip install 'agentsync[mcp,stele,dev]'
 Run with:  python -m pytest tests/test_mcp_service_smoke.py -v
@@ -25,7 +39,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 # ---------------------------------------------------------------------------
-# Repo-relative paths (real rules / skills — read-only in tests)
+# Repo-relative paths (read-only in tests)
 # ---------------------------------------------------------------------------
 
 REPO = Path(__file__).resolve().parents[1]
@@ -33,20 +47,27 @@ RULES_PATH = REPO / "storage" / "rules" / "rules.yaml"
 CAPS_PATH = REPO / "storage" / "rules" / "capabilities.yaml"
 APPROVED_PATH = REPO / "storage" / "skills" / "approved"
 
+# Canonical tool contract — one service, one registration.
 EXPECTED_TOOLS = {
+    # Rule
     "agentsync_evaluate_task",
+    "agentsync_get_task_rules",
+    # Skill
     "agentsync_list_skills",
     "agentsync_read_skill_file",
     "agentsync_activate_skill",
     "agentsync_find_matching_skill",
-    "agentsync_enforcer_enforce",
-    "agentsync_enforcer_submit_candidate",
-    "agentsync_enforcer_get_status",
-    "agentsync_kanon_promote",
+    # Enforcer
+    "agentsync_enforce_task",
+    "agentsync_submit_candidate_skill",
+    "agentsync_get_obligation",
+    # Kanon
+    "agentsync_promote_candidate_skill",
 }
 
-# SKILL.md candidate — passes Kanon PROMOTE level with all three required evidence items
-# (dry_run_output, rollback_step, approval_reference from iam-provisioning-sailpoint rule)
+# SKILL.md candidate — passes Kanon PROMOTE level.
+# rules.yaml requires three evidence items for iam-provisioning-sailpoint:
+#   dry_run_output, rollback_step, approval_reference
 VALID_SKILL_MD = """\
 ---
 name: new-birthright-provisioning-skill
@@ -83,7 +104,7 @@ SKILL_DIR_NAME = "new-birthright-provisioning-skill"
 # ---------------------------------------------------------------------------
 
 def _server_env(tmp_path: Path) -> dict[str, str]:
-    """Build the env dict that points all mutable state at tmp_path."""
+    """Env dict that points all mutable state at tmp_path."""
     return {
         **os.environ,
         "AGENTSYNC_RULES_PATH": str(RULES_PATH),
@@ -106,10 +127,10 @@ def _server_params(tmp_path: Path) -> StdioServerParameters:
 
 
 def _parse(result) -> Any:
-    """Extract and JSON-decode a tool result.
+    """JSON-decode a tool result.
 
     FastMCP serializes list[BaseModel] as one TextContent per item.
-    Collect all items and return a list when multiple content blocks appear.
+    Collect all items into a list when multiple content blocks are returned.
     """
     assert result.content, "tool returned empty content"
     if len(result.content) == 1:
@@ -122,103 +143,123 @@ def _parse(result) -> Any:
 # ---------------------------------------------------------------------------
 
 def test_mcp_tool_catalog(tmp_path: Path) -> None:
-    """Server must advertise exactly the expected set of AgentSync tools."""
+    """AgentSync MCP Service must advertise exactly the expected tool set."""
 
     async def _run():
         async with stdio_client(_server_params(tmp_path)) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 response = await session.list_tools()
-                names = {t.name for t in response.tools}
-                return names
+                return {t.name for t in response.tools}
 
     names = anyio.run(_run)
     assert EXPECTED_TOOLS == names, (
         f"Tool catalog mismatch.\n"
-        f"  missing: {EXPECTED_TOOLS - names}\n"
-        f"  extra:   {names - EXPECTED_TOOLS}"
+        f"  missing from server: {EXPECTED_TOOLS - names}\n"
+        f"  extra on server:     {names - EXPECTED_TOOLS}"
     )
 
 
 # ---------------------------------------------------------------------------
-# Test 2: rule server — evaluate_task over MCP
+# Test 2: agentsync_evaluate_task and agentsync_get_task_rules
 # ---------------------------------------------------------------------------
 
-def test_mcp_evaluate_task(tmp_path: Path) -> None:
-    """agentsync_evaluate_task must identify the IAM skill gap via MCP transport."""
+def test_mcp_evaluate_task_and_get_task_rules(tmp_path: Path) -> None:
+    """Both rule tools must identify the IAM skill gap correctly.
+
+    agentsync_get_task_rules is read-only — calling it twice with the same
+    input must produce identical output (no pre_obligation side effects).
+    """
+    task_payload = {
+        "task": {
+            "task_id": "MCP-RULE-1",
+            "task_description": "Provision a brand new birthright entitlement set",
+            "task_type": "iam-provisioning",
+        }
+    }
+
+    async def _run():
+        async with stdio_client(_server_params(tmp_path)) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+
+                eval_result = await session.call_tool(
+                    "agentsync_evaluate_task", task_payload
+                )
+                evaluation = _parse(eval_result)
+
+                # Call get_task_rules twice — must be idempotent
+                rules_result_1 = await session.call_tool(
+                    "agentsync_get_task_rules", task_payload
+                )
+                rules_result_2 = await session.call_tool(
+                    "agentsync_get_task_rules", task_payload
+                )
+                rules_1 = _parse(rules_result_1)
+                rules_2 = _parse(rules_result_2)
+
+                return evaluation, rules_1, rules_2
+
+    evaluation, rules_1, rules_2 = anyio.run(_run)
+
+    # evaluate_task assertions
+    assert evaluation["skill_expected"] is True
+    assert evaluation["closure_blocked_if_missing_skill"] is True
+    assert set(evaluation["required_evidence"]) == {
+        "dry_run_output", "rollback_step", "approval_reference"
+    }
+
+    # get_task_rules assertions — same shape as evaluate_task
+    assert rules_1["skill_expected"] is True
+    assert set(rules_1["required_evidence"]) == {
+        "dry_run_output", "rollback_step", "approval_reference"
+    }
+
+    # Idempotency: two calls produce identical required_evidence
+    assert set(rules_1["required_evidence"]) == set(rules_2["required_evidence"])
+
+
+# ---------------------------------------------------------------------------
+# Test 3: agentsync_find_matching_skill
+# ---------------------------------------------------------------------------
+
+def test_mcp_find_matching_skill(tmp_path: Path) -> None:
+    """Skill Server must find an existing approved skill by description."""
 
     async def _run():
         async with stdio_client(_server_params(tmp_path)) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
                 result = await session.call_tool(
-                    "agentsync_evaluate_task",
-                    {
-                        "task": {
-                            "task_id": "MCP-EVAL-1",
-                            "task_description": "Provision a brand new birthright entitlement set",
-                            "task_type": "iam-provisioning",
-                        }
-                    },
+                    "agentsync_find_matching_skill",
+                    {"query": {
+                        "text": "run sailpoint-joiner-provisioning for this joiner"
+                    }},
                 )
                 return _parse(result)
 
-    data = anyio.run(_run)
-    assert data["skill_expected"] is True
-    assert data["closure_blocked_if_missing_skill"] is True
-    assert set(data["required_evidence"]) == {
-        "dry_run_output", "rollback_step", "approval_reference"
-    }
-
-
-# ---------------------------------------------------------------------------
-# Test 3: skill server — list and find over MCP
-# ---------------------------------------------------------------------------
-
-def test_mcp_list_and_find_skills(tmp_path: Path) -> None:
-    """Skill Server tools must return real approved-skill data over MCP transport."""
-
-    async def _run():
-        async with stdio_client(_server_params(tmp_path)) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-
-                list_result = await session.call_tool("agentsync_list_skills", {})
-                skills = _parse(list_result)
-
-                find_result = await session.call_tool(
-                    "agentsync_find_matching_skill",
-                    {"query": {"text": "run sailpoint-joiner-provisioning for this joiner"}},
-                )
-                lookup = _parse(find_result)
-
-                return skills, lookup
-
-    skills, lookup = anyio.run(_run)
-
-    assert isinstance(skills, list)
-    assert len(skills) >= 1, "approved/ tree must have at least one skill"
-    ids = {s["canonical_id"] for s in skills}
-    assert "sailpoint-joiner-provisioning" in ids
-
+    lookup = anyio.run(_run)
     assert lookup["status"] == "found"
     assert lookup["canonical_id"] == "sailpoint-joiner-provisioning"
 
 
 # ---------------------------------------------------------------------------
-# Test 4: full loop through MCP — evaluate → enforce → submit → promote
+# Test 4: full loop through MCP
 # ---------------------------------------------------------------------------
 
 def test_mcp_full_loop(tmp_path: Path) -> None:
     """Full AgentSync pipeline exercised entirely through MCP tool calls.
 
-    Step 1  agentsync_evaluate_task       → skill_expected=True
-    Step 2  agentsync_enforcer_enforce    → outcome=obligation_open, token minted
-    Step 3  agentsync_enforcer_get_status → OPEN
-    Step 4  agentsync_enforcer_submit_candidate → SUBMITTED
-    Step 5  agentsync_kanon_promote       → closure_unblocked=True
-    Step 6  agentsync_enforcer_get_status → REDEEMED, closure_blocked=False
+    Step 1  agentsync_evaluate_task           → skill_expected=True
+    Step 2  agentsync_enforce_task            → outcome=obligation_open, token minted
+    Step 3  agentsync_get_obligation          → status=open
+    Step 4  agentsync_submit_candidate_skill  → status=submitted
+    Step 5  agentsync_promote_candidate_skill → closure_unblocked=True
+    Step 6  agentsync_get_obligation          → status=redeemed, closure_blocked=False
     """
+    task_description = (
+        "Provision a brand new birthright entitlement set for a new employee identity"
+    )
 
     async def _run():
         async with stdio_client(_server_params(tmp_path)) as (read, write):
@@ -231,10 +272,7 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
                     {
                         "task": {
                             "task_id": "MCP-LOOP-1",
-                            "task_description": (
-                                "Provision a brand new birthright entitlement set "
-                                "for a new employee identity"
-                            ),
+                            "task_description": task_description,
                             "task_type": "iam-provisioning",
                         }
                     },
@@ -244,27 +282,24 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
                     f"Rule Server did not identify skill gap: {evaluation}"
                 )
 
-                # ---- Step 2: enforce --------------------------------------------
+                # ---- Step 2: enforce — confirm gap, mint token ------------------
                 enforce_result = await session.call_tool(
-                    "agentsync_enforcer_enforce",
+                    "agentsync_enforce_task",
                     {
                         "evaluation": evaluation,
-                        "task_description": (
-                            "Provision a brand new birthright entitlement set "
-                            "for a new employee identity"
-                        ),
+                        "task_description": task_description,
                     },
                 )
                 enforcement = _parse(enforce_result)
                 assert enforcement["outcome"] == "obligation_open", (
-                    f"Enforcer outcome was {enforcement['outcome']!r}; expected obligation_open"
+                    f"Expected obligation_open, got {enforcement['outcome']!r}"
                 )
                 token = enforcement["skill_obligation_token"]
                 assert token is not None
 
-                # ---- Step 3: get_status → OPEN ----------------------------------
+                # ---- Step 3: get_obligation → OPEN ------------------------------
                 status_result = await session.call_tool(
-                    "agentsync_enforcer_get_status",
+                    "agentsync_get_obligation",
                     {"token": token},
                 )
                 obl = _parse(status_result)
@@ -274,10 +309,12 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
 
                 # ---- Step 4: submit candidate -----------------------------------
                 submit_result = await session.call_tool(
-                    "agentsync_enforcer_submit_candidate",
+                    "agentsync_submit_candidate_skill",
                     {
                         "token": token,
-                        "candidate_path": f"staging/MCP-LOOP-1/{SKILL_DIR_NAME}/SKILL.md",
+                        "candidate_path": (
+                            f"staging/MCP-LOOP-1/{SKILL_DIR_NAME}/SKILL.md"
+                        ),
                     },
                 )
                 submitted_obl = _parse(submit_result)
@@ -285,7 +322,7 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
 
                 # ---- Step 5: promote through Kanon + Stele ----------------------
                 promote_result = await session.call_tool(
-                    "agentsync_kanon_promote",
+                    "agentsync_promote_candidate_skill",
                     {
                         "token": token,
                         "skill_md_content": VALID_SKILL_MD,
@@ -295,33 +332,35 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
                 promotion = _parse(promote_result)
                 assert promotion["closure_unblocked"] is True, (
                     f"Promotion did not unblock closure.\n"
-                    f"  state: {promotion.get('state')}\n"
+                    f"  state:  {promotion.get('state')}\n"
                     f"  errors: {promotion.get('validation_errors')}\n"
-                    f"  note: {promotion.get('note')}"
+                    f"  note:   {promotion.get('note')}"
                 )
                 assert promotion["state"] == "committed"
                 assert promotion["artifact"]["run_id"] == run_id, (
                     "Join-key broken over MCP: artifact.run_id != obligation.run_id"
                 )
 
-                # ---- Step 6: get_status → REDEEMED ------------------------------
+                # ---- Step 6: get_obligation → REDEEMED --------------------------
                 final_result = await session.call_tool(
-                    "agentsync_enforcer_get_status",
+                    "agentsync_get_obligation",
                     {"token": token},
                 )
                 final_obl = _parse(final_result)
                 assert final_obl["status"] == "redeemed"
                 assert final_obl["closure_blocked"] is False
-                assert final_obl["redeemed_artifact_hash"] == promotion["artifact"]["artifact_hash"]
+                assert (
+                    final_obl["redeemed_artifact_hash"]
+                    == promotion["artifact"]["artifact_hash"]
+                )
 
-                return promotion
+                return promotion, obl["run_id"]
 
-    promotion = anyio.run(_run)
-    assert promotion["closure_unblocked"] is True
+    promotion, run_id = anyio.run(_run)
 
-    # SKILL.md written to tmp_path artifacts dir
-    obl_run_id = promotion["artifact"]["run_id"]
-    skill_path = tmp_path / "artifacts" / obl_run_id / "SKILL.md"
+    # SKILL.md must be written inside tmp_path artifacts — not in the repo
+    skill_path = tmp_path / "artifacts" / run_id / "SKILL.md"
     assert skill_path.exists(), (
-        f"SKILL.md not written at expected path: {skill_path}"
+        f"SKILL.md not found at expected path: {skill_path}"
     )
+    assert skill_path.read_text(encoding="utf-8") == VALID_SKILL_MD

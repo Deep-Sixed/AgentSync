@@ -1,20 +1,33 @@
-"""AgentSync unified MCP server.
+"""AgentSync MCP Service — control plane facade.
 
-Single FastMCP process — all AgentSync tools in one server, one ContextForge
+Single FastMCP process. All AgentSync tools in one server. One ContextForge
 registration. Subsystem logic lives in the respective engine modules; this file
 is a transport shim only.
 
-Tool groups
------------
-Rule Server      agentsync_evaluate_task
-Skill Server     agentsync_list_skills
-                 agentsync_read_skill_file
-                 agentsync_activate_skill
-                 agentsync_find_matching_skill
-Enforcer         agentsync_enforcer_enforce
-                 agentsync_enforcer_submit_candidate
-                 agentsync_enforcer_get_status
-Kanon            agentsync_kanon_promote
+Deployment model
+----------------
+  Agent / A2A client
+    ↓
+  ContextForge
+    ↓
+  AgentSync MCP Service  (this file)
+      ├── rule tools
+      ├── skill tools
+      ├── enforcer tools
+      └── kanon tools
+
+Tool contract
+-------------
+Rule         agentsync_evaluate_task
+             agentsync_get_task_rules
+Skill        agentsync_list_skills
+             agentsync_read_skill_file
+             agentsync_activate_skill
+             agentsync_find_matching_skill
+Enforcer     agentsync_enforce_task
+             agentsync_submit_candidate_skill
+             agentsync_get_obligation
+Kanon        agentsync_promote_candidate_skill
 
 Run locally (stdio):   python -m agentsync.mcp.server
 Run as HTTP service:   AGENTSYNC_TRANSPORT=http python -m agentsync.mcp.server
@@ -42,7 +55,7 @@ from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Service singletons — initialized once at import time from env vars.
-# All paths are configurable so tests can redirect to tmp_path without
+# All paths are configurable so tests can redirect writes to tmp_path without
 # touching the repo's storage/.
 # ---------------------------------------------------------------------------
 
@@ -79,7 +92,7 @@ _ARTIFACTS_BASE = Path(os.environ.get(
 
 # Rule Server
 from agentsync.rules.rule_resolver import RuleResolver
-from agentsync.rules.models import RuleEvaluation, TaskContext
+from agentsync.rules.models import RuleEvaluation, SkillMatchStatus, TaskContext
 
 _RESOLVER = RuleResolver(
     rules_path=_RULES_PATH,
@@ -108,7 +121,7 @@ _ENFORCER = SkillBuilderEnforcer(
     obligations_path=_OBLIGATIONS_PATH,
 )
 
-# Kanon + Stele port (stele is an optional dep; fail loud at startup if missing)
+# Kanon + Stele port (stele is an optional dep — fail loud at startup if missing)
 from stele.ledger.store import LedgerStore
 from agentsync.kanon.evecor_stele_port import EvecorStelePort
 from agentsync.kanon.models import SkillCandidate
@@ -128,7 +141,7 @@ def _build_server():
 
     mcp = FastMCP("agentsync")
 
-    # ---- Rule Server --------------------------------------------------------
+    # ---- Rule tools ---------------------------------------------------------
 
     @mcp.tool(
         name="agentsync_evaluate_task",
@@ -145,16 +158,42 @@ def _build_server():
 
         Resolver order: pattern match → capability fallback → none.
         Returns skill_expected, required_evidence, and closure_blocked_if_missing_skill.
-        Never mints the authoritative skill_obligation_token — that is the Enforcer's job.
+        May record a non-authoritative pre_obligation when skill_match=missing.
+        Never mints the authoritative skill_obligation_token — that is the Enforcer.
+        Call agentsync_enforce_task next to confirm the gap and mint the token.
         """
         return _RESOLVER.evaluate_task(task)
 
-    # ---- Skill Server -------------------------------------------------------
+    @mcp.tool(
+        name="agentsync_get_task_rules",
+        annotations={
+            "title": "Inspect which rules apply to a task (read-only)",
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": False,
+        },
+    )
+    def agentsync_get_task_rules(task: TaskContext) -> RuleEvaluation:
+        """Return the rules that match a task without any obligation side effects.
+
+        Identical to agentsync_evaluate_task but always idempotent: internally
+        forces skill_match=unknown so no pre_obligation record is written.
+        Use this for inspection — to understand what rules and required_evidence
+        apply — before committing to the full evaluate → enforce lifecycle.
+        """
+        # Force UNKNOWN so the resolver never writes a pre_obligation record.
+        inspection_task = task.model_copy(
+            update={"skill_match": SkillMatchStatus.UNKNOWN}
+        )
+        return _RESOLVER.evaluate_task(inspection_task)
+
+    # ---- Skill tools --------------------------------------------------------
 
     @mcp.tool(
         name="agentsync_list_skills",
         annotations={
-            "title": "List approved skills",
+            "title": "List all approved skills",
             "readOnlyHint": True,
             "destructiveHint": False,
             "idempotentHint": True,
@@ -211,10 +250,10 @@ def _build_server():
         """
         return _SKILL_SERVER.find_matching_skill(query)
 
-    # ---- Enforcer -----------------------------------------------------------
+    # ---- Enforcer tools -----------------------------------------------------
 
     @mcp.tool(
-        name="agentsync_enforcer_enforce",
+        name="agentsync_enforce_task",
         annotations={
             "title": "Confirm skill gap and mint obligation token",
             "readOnlyHint": False,
@@ -223,41 +262,41 @@ def _build_server():
             "openWorldHint": False,
         },
     )
-    def agentsync_enforcer_enforce(
+    def agentsync_enforce_task(
         evaluation: RuleEvaluation,
         task_description: str,
     ) -> EnforcementResult:
-        """Confirm skill coverage and mint an obligation token if missing.
+        """Confirm skill coverage via the Skill Server and mint an obligation token if missing.
 
         Returns outcome: 'covered' | 'obligation_open' | 'no_obligation'.
-        Idempotent: re-enforcing the same task returns the existing live token.
-        Call agentsync_evaluate_task first; pass its result here as `evaluation`.
+        Idempotent: re-enforcing the same task_id returns the existing live token.
+        Prerequisite: call agentsync_evaluate_task first; pass its result as `evaluation`.
         """
         return _ENFORCER.enforce(evaluation, task_description=task_description)
 
     @mcp.tool(
-        name="agentsync_enforcer_submit_candidate",
+        name="agentsync_submit_candidate_skill",
         annotations={
-            "title": "Submit a SKILL.md candidate for Kanon promotion",
+            "title": "Submit a candidate SKILL.md for Kanon promotion",
             "readOnlyHint": False,
             "destructiveHint": False,
             "idempotentHint": False,
             "openWorldHint": False,
         },
     )
-    def agentsync_enforcer_submit_candidate(
+    def agentsync_submit_candidate_skill(
         token: str,
         candidate_path: str,
     ) -> SkillObligation:
         """Transition the obligation from OPEN → SUBMITTED.
 
-        candidate_path is the location of the SKILL.md the agent authored.
-        After this call, use agentsync_kanon_promote to validate and commit it.
+        candidate_path is the agent-facing location of the authored SKILL.md.
+        After this call, use agentsync_promote_candidate_skill to validate and commit it.
         """
         return _ENFORCER.submit_candidate(token, candidate_path)
 
     @mcp.tool(
-        name="agentsync_enforcer_get_status",
+        name="agentsync_get_obligation",
         annotations={
             "title": "Get current obligation status",
             "readOnlyHint": True,
@@ -266,14 +305,14 @@ def _build_server():
             "openWorldHint": False,
         },
     )
-    def agentsync_enforcer_get_status(token: str) -> Optional[SkillObligation]:
-        """Return the current state of an obligation token, or null if unknown."""
+    def agentsync_get_obligation(token: str) -> Optional[SkillObligation]:
+        """Return the current state of a skill_obligation_token, or null if unknown."""
         return _ENFORCER.get_obligation(token)
 
-    # ---- Kanon --------------------------------------------------------------
+    # ---- Kanon tools --------------------------------------------------------
 
     @mcp.tool(
-        name="agentsync_kanon_promote",
+        name="agentsync_promote_candidate_skill",
         annotations={
             "title": "Validate and promote a candidate SKILL.md through Stele",
             "readOnlyHint": False,
@@ -282,26 +321,26 @@ def _build_server():
             "openWorldHint": False,
         },
     )
-    def agentsync_kanon_promote(
+    def agentsync_promote_candidate_skill(
         token: str,
         skill_md_content: str,
         dir_name: str,
     ) -> dict:
         """Validate a candidate SKILL.md and promote it through the Stele substrate.
 
-        Fetches required_evidence from the obligation automatically — the caller
-        only needs the obligation token, the SKILL.md content, and the kebab-case
-        directory name for the skill.
+        Fetches required_evidence from the obligation automatically. The caller only
+        needs the obligation token, the SKILL.md content, and the kebab-case skill
+        directory name.
 
-        Returns a JSON object with:
+        Returns a JSON object:
           closure_unblocked  bool   True only when Stele committed and token redeemed
           state              str    'committed' | 'failed' | 'invalidated' | null
           artifact           dict   Stele commit receipt (artifact_hash, record_id, run_id)
-          validation_errors  list   non-empty when Kanon rejected the candidate
+          validation_errors  list   non-empty when Kanon rejected the SKILL.md
           note               str    human-readable outcome summary
 
         Prerequisite: the obligation must be in SUBMITTED state
-        (call agentsync_enforcer_submit_candidate first).
+        (call agentsync_submit_candidate_skill first).
         """
         obl = _ENFORCER.get_obligation(token)
         if obl is None:
