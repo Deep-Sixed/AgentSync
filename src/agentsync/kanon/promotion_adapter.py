@@ -82,8 +82,8 @@ class PromotionAdapter:
                 note="SKILL.md validation failed; Stele not called",
             )
 
-        # Step 3: commit through the port
-        artifact = self._stele_port.commit_artifact(candidate)
+        # Step 3: commit through the port — thread obl.run_id as the ledger join key
+        artifact = self._stele_port.commit_artifact(candidate, obl.run_id)
 
         # Step 4: COMMITTED — redeem and unblock closure
         if artifact.state is PromotionState.COMMITTED:

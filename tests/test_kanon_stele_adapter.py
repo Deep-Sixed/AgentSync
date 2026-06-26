@@ -326,9 +326,14 @@ def test_happy_path_closure_unblocked(
 
     # Stele received the candidate
     assert fake_stele.call_count() == 1
-    submitted = fake_stele.calls()[0]
-    assert submitted.dir_name == "test-kanon-skill"
-    assert submitted.file_name == "SKILL.md"
+    call = fake_stele.calls()[0]
+    assert call.candidate.dir_name == "test-kanon-skill"
+    assert call.candidate.file_name == "SKILL.md"
+
+    # Join-key seam: run_id passed to Stele must match the obligation's run_id
+    obl_before_redeem = enforcer.get_obligation(token)
+    assert call.run_id == obl_before_redeem.run_id
+    assert result.artifact.run_id == obl_before_redeem.run_id
 
     # artifact receipt present and coherent
     assert result.artifact is not None
