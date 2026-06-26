@@ -1,0 +1,24 @@
+[project]
+name = "agentsync"
+version = "0.1.0"
+description = "Rule + Skill + Skill-Acquisition control plane for AI agents. Exposed through ContextForge (IBM MCP gateway) as the network door; AgentSync is the system."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0"]          # FastMCP transport wrapper — not needed to test the engine
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/agentsync"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

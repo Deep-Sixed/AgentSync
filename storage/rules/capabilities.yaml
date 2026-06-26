@@ -1,0 +1,34 @@
+# AgentSync capability fallback map.
+# Secondary resolver. Consulted ONLY when the pattern layer returns no
+# confident match. Maps capability hints -> capability_family, then
+# capability_family -> skill_family + enforcement defaults. No LLM here.
+
+version: 1
+
+# hint (from task_type or command_family) -> capability_family
+hint_to_capability:
+  okta: identity-governance
+  saviynt: identity-governance
+  workspace-one: endpoint-management
+  mobileiron: endpoint-management
+  litellm: ai-infrastructure
+  routing: ai-infrastructure
+
+# capability_family -> defaults applied when pattern misses
+capability_defaults:
+  identity-governance:
+    skill_family: iam-lifecycle
+    required_evidence: [dry_run_output, rollback_step]
+    enforcement_level: block
+  endpoint-management:
+    skill_family: apple-device-management
+    required_evidence: [test_device_result]
+    enforcement_level: block
+  ai-infrastructure:
+    skill_family: routing-config
+    required_evidence: [config_snapshot, fallback_proof]
+    enforcement_level: advise
+  diagnostics:
+    skill_family: null
+    required_evidence: []
+    enforcement_level: none

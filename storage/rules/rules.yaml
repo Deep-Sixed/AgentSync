@@ -1,0 +1,53 @@
+# AgentSync pattern rules — deterministic, diffable, reviewable.
+# Primary (day-one) resolver. capability_family is REQUIRED on every rule
+# so the model can mature into a capability registry without ever changing
+# the evaluate_task contract.
+
+version: 1
+
+rules:
+  - id: iam-provisioning-sailpoint
+    match:
+      task_type: [iam-provisioning, access-request]
+      keywords: [sailpoint, identityiq, joiner, mover, leaver, birthright, entitlement]
+      command_family: [sailpoint]
+      file_globs: ["**/identityiq/**", "**/*.workflow"]
+    skill_expected: true
+    skill_family: iam-lifecycle
+    capability_family: identity-governance
+    required_evidence: [dry_run_output, rollback_step, approval_reference]
+    enforcement_level: block
+
+  - id: mdm-jamf-enrollment
+    match:
+      task_type: [mdm-enrollment, device-config]
+      keywords: [jamf, ade, abm, vpp, dep, profile, smart-group]
+      command_family: [jamf]
+      file_globs: ["**/jamf/**", "**/*.mobileconfig"]
+    skill_expected: true
+    skill_family: apple-device-management
+    capability_family: endpoint-management
+    required_evidence: [test_device_result, scope_definition]
+    enforcement_level: block
+
+  - id: postgres-migration
+    match:
+      task_type: [db-migration, schema-change]
+      keywords: [postgres, postgresql, migration, ddl, "alter table", cutover]
+      command_family: [psql, alembic]
+      file_globs: ["**/migrations/**", "**/*.sql"]
+    skill_expected: true
+    skill_family: data-migration
+    capability_family: data-platform
+    required_evidence: [migration_dry_run, rollback_script, row_count_gate]
+    enforcement_level: block
+
+  - id: readonly-investigation
+    match:
+      task_type: [investigation, audit, read-only]
+      keywords: [inspect, audit, review, report, list, status]
+    skill_expected: false
+    skill_family: null
+    capability_family: diagnostics
+    required_evidence: []
+    enforcement_level: none
