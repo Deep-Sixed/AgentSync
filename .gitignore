@@ -8,3 +8,5 @@ build/
 storage/obligations/*.jsonl
 storage/skills/**/*
 !storage/rules/*.yaml
+storage/stele/*.db
+storage/stele/artifacts/
