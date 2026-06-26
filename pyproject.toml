@@ -9,8 +9,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.0"]          # FastMCP transport wrapper — not needed to test the engine
-dev = ["pytest>=8.0"]
+mcp = ["mcp[cli]>=1.0"]     # FastMCP transport — required to run agentsync.mcp.server
+dev = ["pytest>=8.0", "mcp[cli]>=1.0", "anyio>=4.0"]
 stele = ["stele @ file:///mnt/jarvis-data/projects/Stele"]
 
 [build-system]
