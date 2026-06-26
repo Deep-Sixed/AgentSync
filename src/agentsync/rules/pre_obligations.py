@@ -14,7 +14,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 DEFAULT_PRE_OBLIGATIONS_PATH = Path("storage/obligations/pre_obligations.jsonl")
 
@@ -26,14 +26,14 @@ def _now_iso() -> str:
 def write_pre_obligation(
     *,
     task_id: str,
-    skill_family: Optional[str],
-    capability_family: Optional[str],
-    required_evidence: List[str],
+    skill_family: str | None,
+    capability_family: str | None,
+    required_evidence: list[str],
     enforcement_level: str,
     resolver_path: str,
-    matched_rule_ids: List[str],
-    path: Optional[Path] = None,
-) -> Dict[str, Any]:
+    matched_rule_ids: list[str],
+    path: Path | None = None,
+) -> dict[str, Any]:
     """Append one pre_obligation decision record. Returns the written record."""
     target = path or DEFAULT_PRE_OBLIGATIONS_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -57,12 +57,12 @@ def write_pre_obligation(
     return record
 
 
-def read_pre_obligations(path: Optional[Path] = None) -> List[Dict[str, Any]]:
+def read_pre_obligations(path: Path | None = None) -> list[dict[str, Any]]:
     """Read all decision records. Missing file -> []. Malformed lines skipped."""
     target = path or DEFAULT_PRE_OBLIGATIONS_PATH
     if not target.exists():
         return []
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     for line in target.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:

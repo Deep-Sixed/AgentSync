@@ -9,7 +9,7 @@ logic or its tests.
 """
 
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Protocol
 
 from agentsync.skills.skill_server import SkillLookupResult, SkillQuery, SkillServer
 
@@ -24,7 +24,7 @@ class SkillLookup(Protocol):
 class InProcessSkillLookup:
     """In-process lookup backed by a local SkillServer. Single-box deployment."""
 
-    def __init__(self, approved_root: Optional[Path] = None) -> None:
+    def __init__(self, approved_root: Path | None = None) -> None:
         self._server = SkillServer(approved_root=approved_root)
 
     def find_matching_skill(self, query: SkillQuery) -> SkillLookupResult:

@@ -15,7 +15,6 @@ the decision engine, not the ratchet.
 
 
 from enum import Enum
-from typing import Optional, List
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -50,16 +49,16 @@ class TaskContext(BaseModel):
                          description="Stable id for this task (e.g. 'JIRA-4821')")
     task_description: str = Field(..., min_length=1,
                                   description="Natural-language description of the task")
-    task_type: Optional[str] = Field(default=None,
-                                     description="Optional explicit type tag (e.g. 'iam-provisioning')")
-    touched_files: Optional[List[str]] = Field(default_factory=list,
-                                               description="Paths the task touches, for glob matching")
-    command_family: Optional[str] = Field(default=None,
-                                          description="Command family if known (e.g. 'sailpoint', 'jamf')")
+    task_type: str | None = Field(default=None,
+                                  description="Optional explicit type tag (e.g. 'iam-provisioning')")
+    touched_files: list[str] | None = Field(default_factory=list,
+                                            description="Paths the task touches, for glob matching")
+    command_family: str | None = Field(default=None,
+                                       description="Command family if known (e.g. 'sailpoint', 'jamf')")
     skill_match: SkillMatchStatus = Field(default=SkillMatchStatus.UNKNOWN,
                                           description="What the caller knows about existing skill coverage")
-    existing_skill_id: Optional[str] = Field(default=None,
-                                             description="Canonical skill id, if skill_match=found")
+    existing_skill_id: str | None = Field(default=None,
+                                          description="Canonical skill id, if skill_match=found")
 
 
 class MatchedRule(BaseModel):
@@ -68,9 +67,9 @@ class MatchedRule(BaseModel):
 
     rule_id: str
     skill_expected: bool
-    skill_family: Optional[str] = None
-    capability_family: Optional[str] = None
-    required_evidence: List[str] = Field(default_factory=list)
+    skill_family: str | None = None
+    capability_family: str | None = None
+    required_evidence: list[str] = Field(default_factory=list)
     enforcement_level: EnforcementLevel = EnforcementLevel.NONE
 
 
@@ -79,13 +78,13 @@ class RuleEvaluation(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     task_id: str
-    matched_rules: List[MatchedRule] = Field(default_factory=list)
+    matched_rules: list[MatchedRule] = Field(default_factory=list)
     resolver_path: ResolverPath = Field(..., description="Which layer produced the decision")
 
     skill_expected: bool
-    skill_family: Optional[str] = None
-    capability_family: Optional[str] = None
-    required_evidence: List[str] = Field(default_factory=list)
+    skill_family: str | None = None
+    capability_family: str | None = None
+    required_evidence: list[str] = Field(default_factory=list)
     enforcement_level: EnforcementLevel = EnforcementLevel.NONE
 
     # Loop-control signals consumed by the Enforcer:
@@ -99,14 +98,14 @@ class RuleEvaluation(BaseModel):
         default=False,
         description="True when a BLOCK-level obligation would apply on confirmed-missing")
 
-    existing_skill_id: Optional[str] = Field(
+    existing_skill_id: str | None = Field(
         default=None,
         description="Echoed canonical id when skill_match=found")
-    pre_obligation_id: Optional[str] = Field(
+    pre_obligation_id: str | None = Field(
         default=None,
         description="Id of the decision record written to disk, if one was written")
 
     # INTENTIONAL INVARIANT: always null from the Rule Server.
-    authoritative_skill_obligation_token: Optional[str] = Field(
+    authoritative_skill_obligation_token: str | None = Field(
         default=None,
         description="Always null here. Minted only by the Skill Builder Enforcer.")

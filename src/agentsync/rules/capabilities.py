@@ -8,7 +8,7 @@ then applies that family's defaults. No LLM, no network.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import yaml
 
@@ -17,8 +17,8 @@ from .models import EnforcementLevel, MatchedRule
 
 @dataclass
 class CapabilityMap:
-    hint_to_capability: Dict[str, str]
-    capability_defaults: Dict[str, Dict[str, Any]]
+    hint_to_capability: dict[str, str]
+    capability_defaults: dict[str, dict[str, Any]]
 
 
 def load_capabilities(cap_path: Path) -> CapabilityMap:
@@ -32,10 +32,10 @@ def load_capabilities(cap_path: Path) -> CapabilityMap:
     )
 
 
-def resolve_capability(task, cap: CapabilityMap) -> Optional[MatchedRule]:
+def resolve_capability(task, cap: CapabilityMap) -> MatchedRule | None:
     """Map task hints -> capability_family -> defaults. None if no hint matches."""
     # Try the strong, explicit hints first: command_family, then task_type.
-    family: Optional[str] = None
+    family: str | None = None
     for hint in (task.command_family, task.task_type):
         if hint and hint.lower() in cap.hint_to_capability:
             family = cap.hint_to_capability[hint.lower()]

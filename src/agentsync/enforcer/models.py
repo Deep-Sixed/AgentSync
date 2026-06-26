@@ -14,7 +14,6 @@ Lifecycle:
 """
 
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,10 +35,10 @@ class SkillObligation(BaseModel):
     task_id: str
 
     # Provenance back to the Rule Server decision
-    pre_obligation_id: Optional[str] = None
-    skill_family: Optional[str] = None
-    capability_family: Optional[str] = None
-    required_evidence: List[str] = Field(default_factory=list)
+    pre_obligation_id: str | None = None
+    skill_family: str | None = None
+    capability_family: str | None = None
+    required_evidence: list[str] = Field(default_factory=list)
 
     # Lifecycle
     status: ObligationStatus = ObligationStatus.OPEN
@@ -48,9 +47,9 @@ class SkillObligation(BaseModel):
     # Audit
     created_at: str
     updated_at: str
-    candidate_path: Optional[str] = None   # set on SUBMITTED
-    redeemed_artifact_hash: Optional[str] = None  # set on REDEEMED (from Stele)
-    note: Optional[str] = None
+    candidate_path: str | None = None   # set on SUBMITTED
+    redeemed_artifact_hash: str | None = None  # set on REDEEMED (from Stele)
+    note: str | None = None
 
 
 class EnforcementResult(BaseModel):
@@ -59,10 +58,10 @@ class EnforcementResult(BaseModel):
 
     task_id: str
     outcome: str                          # "covered" | "obligation_open" | "no_obligation"
-    skill_obligation_token: Optional[str] = None
-    run_id: Optional[str] = None
+    skill_obligation_token: str | None = None
+    run_id: str | None = None
     closure_blocked: bool = False
-    existing_skill_id: Optional[str] = None     # set when covered
-    best_near_match: Optional[str] = None        # surfaced from the lookup, never coverage
-    required_evidence: List[str] = Field(default_factory=list)
-    note: Optional[str] = None
+    existing_skill_id: str | None = None     # set when covered
+    best_near_match: str | None = None        # surfaced from the lookup, never coverage
+    required_evidence: list[str] = Field(default_factory=list)
+    note: str | None = None

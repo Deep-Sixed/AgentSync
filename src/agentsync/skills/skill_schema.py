@@ -19,7 +19,6 @@ procedure, proof, and (at promote) required_evidence + safety.
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
 
 
 class ValidationLevel(str, Enum):
@@ -53,10 +52,10 @@ _KEBAB_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 class SkillValidation:
     level: ValidationLevel
     valid: bool
-    errors: List[str] = field(default_factory=list)        # blocking
-    warnings: List[str] = field(default_factory=list)      # advisory
-    frontmatter: Dict[str, str] = field(default_factory=dict)
-    sections: List[str] = field(default_factory=list)      # normalized headers found
+    errors: list[str] = field(default_factory=list)        # blocking
+    warnings: list[str] = field(default_factory=list)      # advisory
+    frontmatter: dict[str, str] = field(default_factory=dict)
+    sections: list[str] = field(default_factory=list)      # normalized headers found
 
 
 # --- public parser (single source of truth for SKILL.md structure) ----------
@@ -66,10 +65,10 @@ class ParsedSkillDocument:
     """The one canonical parse of a SKILL.md. Both the validator and the Skill
     Server registry consume this, so they can never disagree about what a skill
     is."""
-    frontmatter: Dict[str, str] = field(default_factory=dict)
+    frontmatter: dict[str, str] = field(default_factory=dict)
     body: str = ""
-    sections: List[str] = field(default_factory=list)            # normalized headers, in order
-    section_text: Dict[str, str] = field(default_factory=dict)   # normalized header -> its text
+    sections: list[str] = field(default_factory=list)            # normalized headers, in order
+    section_text: dict[str, str] = field(default_factory=dict)   # normalized header -> its text
 
     def has_section(self, wanted: str) -> bool:
         return _has_section(self.sections, wanted)
@@ -96,7 +95,7 @@ def parse_skill_md(text: str) -> ParsedSkillDocument:
 
 # --- parsing internals ------------------------------------------------------
 
-def _parse_frontmatter(text: str) -> Tuple[Dict[str, str], str]:
+def _parse_frontmatter(text: str) -> tuple[dict[str, str], str]:
     """Extract simple `key: value` YAML frontmatter delimited by --- fences.
 
     Deliberately minimal (no nested YAML): a skill's frontmatter is flat
@@ -106,7 +105,7 @@ def _parse_frontmatter(text: str) -> Tuple[Dict[str, str], str]:
     if not m:
         return {}, text
     block, body = m.group(1), m.group(2)
-    fm: Dict[str, str] = {}
+    fm: dict[str, str] = {}
     for line in block.splitlines():
         if ":" in line and not line.lstrip().startswith("#"):
             k, _, v = line.partition(":")
@@ -114,15 +113,15 @@ def _parse_frontmatter(text: str) -> Tuple[Dict[str, str], str]:
     return fm, body
 
 
-def _find_headers(body: str) -> List[Tuple[str, int]]:
+def _find_headers(body: str) -> list[tuple[str, int]]:
     """Return [(normalized_header, body_offset)] for every markdown ATX header."""
-    out: List[Tuple[str, int]] = []
+    out: list[tuple[str, int]] = []
     for m in re.finditer(r"(?m)^#{1,6}\s+(.+?)\s*$", body):
         out.append((m.group(1).strip().lower(), m.end()))
     return out
 
 
-def _section_text(body: str, headers: List[Tuple[str, int]], idx: int) -> str:
+def _section_text(body: str, headers: list[tuple[str, int]], idx: int) -> str:
     """Text between header idx and the next header (or end of body)."""
     start = headers[idx][1]
     end = headers[idx + 1][1] if idx + 1 < len(headers) else len(body)
@@ -134,13 +133,13 @@ def _section_text(body: str, headers: List[Tuple[str, int]], idx: int) -> str:
     return body[start:end].strip()
 
 
-def _has_section(normalized: List[str], wanted: str) -> bool:
+def _has_section(normalized: list[str], wanted: str) -> bool:
     if wanted == "_process_":
         return any(h in _PROCESS_ALIASES for h in normalized)
     return any(h == wanted or h.startswith(wanted) for h in normalized)
 
 
-def _verification_text(body: str, headers: List[Tuple[str, int]]) -> str:
+def _verification_text(body: str, headers: list[tuple[str, int]]) -> str:
     for i, (h, _) in enumerate(headers):
         if h == "verification" or h.startswith("verification"):
             return _section_text(body, headers, i)
@@ -153,9 +152,9 @@ def validate_skill_md(
     text: str,
     *,
     level: ValidationLevel = ValidationLevel.DRAFT,
-    required_evidence: Optional[List[str]] = None,
-    dir_name: Optional[str] = None,
-    file_name: Optional[str] = None,
+    required_evidence: list[str] | None = None,
+    dir_name: str | None = None,
+    file_name: str | None = None,
 ) -> SkillValidation:
     """Validate a candidate SKILL.md against the requested level.
 
@@ -174,8 +173,8 @@ def validate_skill_md(
     fm = doc.frontmatter
     normalized = doc.sections
 
-    errors: List[str] = []
-    warnings: List[str] = []
+    errors: list[str] = []
+    warnings: list[str] = []
 
     # --- frontmatter (all levels) ---
     if not fm:

@@ -16,7 +16,6 @@ decides whether an authoring obligation exists and tracks its lifecycle.
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from agentsync.rules.models import RuleEvaluation
 from agentsync.skills.skill_server import SkillQuery
@@ -35,9 +34,9 @@ class SkillBuilderEnforcer:
 
     def __init__(
         self,
-        lookup: Optional[SkillLookup] = None,
-        obligations_path: Optional[Path] = None,
-        approved_root: Optional[Path] = None,
+        lookup: SkillLookup | None = None,
+        obligations_path: Path | None = None,
+        approved_root: Path | None = None,
     ) -> None:
         # Default to in-process lookup; inject a remote one later without
         # touching anything below.
@@ -165,7 +164,7 @@ class SkillBuilderEnforcer:
 
     # --- public read ---------------------------------------------------------
 
-    def get_obligation(self, token: str) -> Optional[SkillObligation]:
+    def get_obligation(self, token: str) -> SkillObligation | None:
         """Return the current state of one token, or None if unknown."""
         return get_obligation(token, self._path)
 

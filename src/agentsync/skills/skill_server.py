@@ -23,7 +23,6 @@ never modifies files. This is not Kanon.
 
 import re
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -48,8 +47,8 @@ class SkillSummary(BaseModel):
     canonical_id: str
     name: str
     description: str
-    skill_family: Optional[str] = None
-    capability_family: Optional[str] = None
+    skill_family: str | None = None
+    capability_family: str | None = None
     path: str
 
 
@@ -72,19 +71,19 @@ class ActivatedSkill(BaseModel):
 class SkillLookupResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     status: str                              # "found" | "missing"
-    canonical_id: Optional[str] = None       # set only when found
-    matched_name: Optional[str] = None       # set only when found
-    match_reason: Optional[str] = None
+    canonical_id: str | None = None       # set only when found
+    matched_name: str | None = None       # set only when found
+    match_reason: str | None = None
     score: float = 0.0
-    best_near_match: Optional[str] = None    # near-miss canonical_id when missing
+    best_near_match: str | None = None    # near-miss canonical_id when missing
 
 
 class SkillQuery(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
     text: str = Field(..., min_length=1, description="Task description or skill query")
-    skill_family: Optional[str] = Field(default=None, description="Family hint from the Rule Server")
-    capability_family: Optional[str] = Field(default=None, description="Capability hint from the Rule Server")
-    canonical_id: Optional[str] = Field(default=None, description="Direct id lookup, if the caller has one")
+    skill_family: str | None = Field(default=None, description="Family hint from the Rule Server")
+    capability_family: str | None = Field(default=None, description="Capability hint from the Rule Server")
+    canonical_id: str | None = Field(default=None, description="Direct id lookup, if the caller has one")
 
 
 def _tokens(s: str) -> set:
@@ -100,15 +99,15 @@ def _capped_overlap(a: set, b: set, per_hit: float, cap: float) -> float:
 class SkillServer:
     """Holds the loaded approved-skill index and answers the four tools."""
 
-    def __init__(self, approved_root: Optional[Path] = None) -> None:
+    def __init__(self, approved_root: Path | None = None) -> None:
         self._approved_root = approved_root
-        self._skills: Dict[str, ApprovedSkill] = load_approved_skills(approved_root)
+        self._skills: dict[str, ApprovedSkill] = load_approved_skills(approved_root)
 
     def reload(self) -> None:
         """Re-scan disk (e.g. after Kanon promotes a new skill)."""
         self._skills = load_approved_skills(self._approved_root)
 
-    def list_skills(self) -> List[SkillSummary]:
+    def list_skills(self) -> list[SkillSummary]:
         return [
             SkillSummary(
                 canonical_id=s.canonical_id,
@@ -121,13 +120,13 @@ class SkillServer:
             for s in self._skills.values()
         ]
 
-    def read_skill_file(self, canonical_id: str) -> Optional[SkillFile]:
+    def read_skill_file(self, canonical_id: str) -> SkillFile | None:
         s = self._skills.get(canonical_id)
         if s is None:
             return None
         return SkillFile(canonical_id=s.canonical_id, path=str(s.path), content=s.raw)
 
-    def activate_skill(self, canonical_id: str) -> Optional[ActivatedSkill]:
+    def activate_skill(self, canonical_id: str) -> ActivatedSkill | None:
         s = self._skills.get(canonical_id)
         if s is None:
             return None
@@ -151,7 +150,7 @@ class SkillServer:
         q_text_lc = query.text.lower()
         q_tokens = _tokens(query.text)
 
-        best: Optional[ApprovedSkill] = None
+        best: ApprovedSkill | None = None
         best_score = 0.0
         best_reason = ""
 
@@ -165,7 +164,7 @@ class SkillServer:
 
             # 3. Otherwise accumulate contributing signals.
             score = 0.0
-            reasons: List[str] = []
+            reasons: list[str] = []
 
             name_overlap = _capped_overlap(
                 q_tokens, _tokens(s.name), 0.12, W_NAME_TOKEN_OVERLAP_CAP)

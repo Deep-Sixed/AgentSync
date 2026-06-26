@@ -2,7 +2,7 @@
 name = "agentsync"
 version = "0.1.0"
 description = "Rule + Skill + Skill-Acquisition control plane for AI agents. Exposed through ContextForge (IBM MCP gateway) as the network door; AgentSync is the system."
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",

@@ -9,7 +9,6 @@ ContextForge, A2A, or gateway running.
 
 
 from pathlib import Path
-from typing import List, Optional
 
 from .capabilities import CapabilityMap, load_capabilities, resolve_capability
 from .matcher import load_rules, resolve_pattern
@@ -32,9 +31,9 @@ class RuleResolver:
 
     def __init__(
         self,
-        rules_path: Optional[Path] = None,
-        capabilities_path: Optional[Path] = None,
-        pre_obligations_path: Optional[Path] = None,
+        rules_path: Path | None = None,
+        capabilities_path: Path | None = None,
+        pre_obligations_path: Path | None = None,
     ) -> None:
         self._rules = load_rules(rules_path or DEFAULT_RULES_PATH)
         self._caps: CapabilityMap = load_capabilities(capabilities_path or DEFAULT_CAPABILITIES_PATH)

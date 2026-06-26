@@ -10,14 +10,13 @@ Server live in a separate file and are non-authoritative decision records.)
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from .models import SkillObligation
 
 DEFAULT_OBLIGATIONS_PATH = Path("storage/obligations/skill_obligations.jsonl")
 
 
-def append_obligation(obl: SkillObligation, path: Optional[Path] = None) -> SkillObligation:
+def append_obligation(obl: SkillObligation, path: Path | None = None) -> SkillObligation:
     """Append a full obligation snapshot. Returns the obligation written."""
     target = path or DEFAULT_OBLIGATIONS_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -26,10 +25,10 @@ def append_obligation(obl: SkillObligation, path: Optional[Path] = None) -> Skil
     return obl
 
 
-def _read_snapshots(path: Path) -> List[SkillObligation]:
+def _read_snapshots(path: Path) -> list[SkillObligation]:
     if not path.exists():
         return []
-    out: List[SkillObligation] = []
+    out: list[SkillObligation] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -41,21 +40,21 @@ def _read_snapshots(path: Path) -> List[SkillObligation]:
     return out
 
 
-def current_state(path: Optional[Path] = None) -> Dict[str, SkillObligation]:
+def current_state(path: Path | None = None) -> dict[str, SkillObligation]:
     """Reconstruct current obligation state: latest snapshot per token."""
     target = path or DEFAULT_OBLIGATIONS_PATH
-    state: Dict[str, SkillObligation] = {}
+    state: dict[str, SkillObligation] = {}
     for snap in _read_snapshots(target):
         state[snap.skill_obligation_token] = snap  # last write wins
     return state
 
 
-def get_obligation(token: str, path: Optional[Path] = None) -> Optional[SkillObligation]:
+def get_obligation(token: str, path: Path | None = None) -> SkillObligation | None:
     """Return the current state of one token, or None if unknown."""
     return current_state(path).get(token)
 
 
-def find_open_for_task(task_id: str, path: Optional[Path] = None) -> Optional[SkillObligation]:
+def find_open_for_task(task_id: str, path: Path | None = None) -> SkillObligation | None:
     """Return an OPEN/SUBMITTED obligation for a task, if one exists.
 
     Used for idempotency: a task that already has a live obligation must not

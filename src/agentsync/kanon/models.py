@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional
 
 
 class PromotionState(str, Enum):
@@ -58,7 +57,7 @@ class PromotionResult:
     after a COMMITTED Stele artifact — that is the closure gate.
     """
     closure_unblocked: bool
-    state: Optional[PromotionState] = None
-    artifact: Optional[PromotionArtifact] = None
+    state: PromotionState | None = None
+    artifact: PromotionArtifact | None = None
     validation_errors: list[str] = field(default_factory=list)
     note: str = ""

@@ -12,7 +12,7 @@ to the capability resolver. No LLM, no network — pure and testable.
 import fnmatch
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import yaml
 
@@ -32,20 +32,20 @@ class ScoredRule:
 
 @dataclass
 class PatternResult:
-    scored: List[ScoredRule] = field(default_factory=list)
+    scored: list[ScoredRule] = field(default_factory=list)
 
     @property
     def confident(self) -> bool:
         return any(s.strong_signal or s.score >= CONFIDENT_SCORE for s in self.scored)
 
     @property
-    def best(self) -> Optional[ScoredRule]:
+    def best(self) -> ScoredRule | None:
         if not self.scored:
             return None
         return max(self.scored, key=lambda s: (s.strong_signal, s.score))
 
 
-def load_rules(rules_path: Path) -> List[Dict[str, Any]]:
+def load_rules(rules_path: Path) -> list[dict[str, Any]]:
     """Load the pattern rule list. Missing file -> empty list (no crash)."""
     if not rules_path.exists():
         return []
@@ -63,7 +63,7 @@ def _haystack(task) -> str:
     return " ".join(parts).lower()
 
 
-def _match_rule(rule: Dict[str, Any], task) -> Optional[ScoredRule]:
+def _match_rule(rule: dict[str, Any], task) -> ScoredRule | None:
     match = rule.get("match", {}) or {}
     score = 0
     strong = False
@@ -108,7 +108,7 @@ def _match_rule(rule: Dict[str, Any], task) -> Optional[ScoredRule]:
     return ScoredRule(rule=matched, score=score, strong_signal=strong)
 
 
-def resolve_pattern(task, rules: List[Dict[str, Any]]) -> PatternResult:
+def resolve_pattern(task, rules: list[dict[str, Any]]) -> PatternResult:
     """Run the pattern layer. Returns all scored matches (may be empty)."""
     scored = [sr for rule in rules if (sr := _match_rule(rule, task)) is not None]
     scored.sort(key=lambda s: (s.strong_signal, s.score), reverse=True)

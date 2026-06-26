@@ -51,7 +51,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Service singletons — initialized once at import time from env vars.
@@ -214,7 +213,7 @@ def _build_server():
             "openWorldHint": False,
         },
     )
-    def agentsync_read_skill_file(canonical_id: str) -> Optional[SkillFile]:
+    def agentsync_read_skill_file(canonical_id: str) -> SkillFile | None:
         """Return the full SKILL.md content for a canonical_id, or null if unknown."""
         return _SKILL_SERVER.read_skill_file(canonical_id)
 
@@ -228,7 +227,7 @@ def _build_server():
             "openWorldHint": False,
         },
     )
-    def agentsync_activate_skill(canonical_id: str) -> Optional[ActivatedSkill]:
+    def agentsync_activate_skill(canonical_id: str) -> ActivatedSkill | None:
         """Load a skill's full instructions for injection into agent context."""
         return _SKILL_SERVER.activate_skill(canonical_id)
 
@@ -305,7 +304,7 @@ def _build_server():
             "openWorldHint": False,
         },
     )
-    def agentsync_get_obligation(token: str) -> Optional[SkillObligation]:
+    def agentsync_get_obligation(token: str) -> SkillObligation | None:
         """Return the current state of a skill_obligation_token, or null if unknown."""
         return _ENFORCER.get_obligation(token)
 

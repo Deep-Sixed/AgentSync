@@ -8,7 +8,6 @@ exactly one parser in the codebase.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
 
 from .skill_schema import parse_skill_md
 
@@ -21,13 +20,13 @@ class ApprovedSkill:
     canonical_id: str          # = directory name
     name: str                  # frontmatter name
     description: str
-    skill_family: Optional[str]
-    capability_family: Optional[str]
+    skill_family: str | None
+    capability_family: str | None
     path: Path                 # path to the SKILL.md
     raw: str = field(repr=False, default="")  # full file text (for read/activate)
 
 
-def load_approved_skills(approved_root: Optional[Path] = None) -> Dict[str, ApprovedSkill]:
+def load_approved_skills(approved_root: Path | None = None) -> dict[str, ApprovedSkill]:
     """Scan the approved tree. Returns {canonical_id: ApprovedSkill}.
 
     Missing root -> empty. Directories without a SKILL.md are skipped.
@@ -36,7 +35,7 @@ def load_approved_skills(approved_root: Optional[Path] = None) -> Dict[str, Appr
     skill object so callers can surface drift if they want.
     """
     root = approved_root or DEFAULT_APPROVED_ROOT
-    out: Dict[str, ApprovedSkill] = {}
+    out: dict[str, ApprovedSkill] = {}
     if not root.exists():
         return out
 
