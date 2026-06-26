@@ -135,10 +135,10 @@ _ADAPTER = PromotionAdapter(_ENFORCER, _PORT)
 # Server construction (lazy so the engine stays importable without `mcp`)
 # ---------------------------------------------------------------------------
 
-def _build_server():
+def _build_server(port: int = 8080):
     from mcp.server.fastmcp import FastMCP
 
-    mcp = FastMCP("agentsync")
+    mcp = FastMCP("agentsync", port=port)
 
     # ---- Rule tools ---------------------------------------------------------
 
@@ -374,12 +374,13 @@ def _build_server():
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    server = _build_server()
     transport = os.environ.get("AGENTSYNC_TRANSPORT", "stdio")
     if transport == "http":
         port = int(os.environ.get("AGENTSYNC_PORT", "8080"))
-        server.run(transport="streamable_http", port=port)
+        server = _build_server(port=port)
+        server.run(transport="streamable-http")
     else:
+        server = _build_server()
         server.run()
 
 
