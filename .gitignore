@@ -12,6 +12,8 @@ storage/skills/**/*
 !storage/skills/approved/.gitkeep
 !storage/rules/*.yaml
 storage/stele/*.db
+storage/stele/*.db-shm
+storage/stele/*.db-wal
 storage/stele/artifacts/*
 !storage/stele/.gitkeep
 storage/backups/
