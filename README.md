@@ -96,3 +96,4 @@ uv run pytest tests/test_agent_facing_a2a_smoke.py -v  # requires ContextForge
 | Tag | Gate |
 |-----|------|
 | `v1.1-kanon-agent-facing-a2a-smoke` | 95/95 |
+| `v1.1-kanon-operational-hardening` | 98/98 |
