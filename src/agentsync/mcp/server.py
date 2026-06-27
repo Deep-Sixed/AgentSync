@@ -45,10 +45,12 @@ AGENTSYNC_STELE_DB_PATH         path to Stele SQLite ledger DB
 AGENTSYNC_ARTIFACTS_BASE        base directory for Stele artifact writes
 AGENTSYNC_TRANSPORT             stdio (default) | http
 AGENTSYNC_PORT                  HTTP port when transport=http (default 8080)
+AGENTSYNC_LOG_LEVEL             logging level (default INFO)
 """
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
@@ -373,7 +375,27 @@ def _build_server(port: int = 8080):
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _configure_logging() -> None:
+    level_name = os.environ.get("AGENTSYNC_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+
+def _ensure_storage_dirs() -> None:
+    """Create parent directories for all mutable storage paths."""
+    _PRE_OBLIGATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _OBLIGATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _APPROVED_ROOT.mkdir(parents=True, exist_ok=True)
+    _STELE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _ARTIFACTS_BASE.mkdir(parents=True, exist_ok=True)
+
+
 def main() -> None:
+    _configure_logging()
+    _ensure_storage_dirs()
     transport = os.environ.get("AGENTSYNC_TRANSPORT", "stdio")
     if transport == "http":
         port = int(os.environ.get("AGENTSYNC_PORT", "8080"))

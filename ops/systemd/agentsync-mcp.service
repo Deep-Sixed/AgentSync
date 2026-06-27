@@ -1,0 +1,21 @@
+[Unit]
+Description=AgentSync MCP Service — Rule, Skill, Enforcer, Kanon control plane
+Documentation=file:///mnt/jarvis-data/projects/AgentSync/README.md
+After=network-online.target default.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+WorkingDirectory=/mnt/jarvis-data/projects/AgentSync
+EnvironmentFile=-/home/jarvis/.config/agentsync/env
+ExecStartPre=/mnt/jarvis-data/projects/AgentSync/scripts/bootstrap-storage.sh
+ExecStart=/mnt/jarvis-data/projects/AgentSync/.venv/bin/python -m agentsync.mcp.server
+Restart=always
+RestartSec=10
+TimeoutStopSec=30
+SyslogIdentifier=agentsync-mcp
+
+[Install]
+WantedBy=default.target

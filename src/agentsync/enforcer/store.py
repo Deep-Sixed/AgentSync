@@ -1,6 +1,6 @@
 """Obligation store — authoritative append-only log.
 
-Append-only JSONL at storage/obligations/skill_obligations.jsonl. Each lifecycle
+Append-only JSONL at storage/obligations/obligations.jsonl. Each lifecycle
 transition appends a full SkillObligation snapshot; the CURRENT state of a token
 is the latest snapshot for that token. Read tolerates malformed lines.
 
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .models import SkillObligation
 
-DEFAULT_OBLIGATIONS_PATH = Path("storage/obligations/skill_obligations.jsonl")
+DEFAULT_OBLIGATIONS_PATH = Path("storage/obligations/obligations.jsonl")
 
 
 def append_obligation(obl: SkillObligation, path: Path | None = None) -> SkillObligation:

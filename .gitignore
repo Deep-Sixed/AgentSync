@@ -6,7 +6,12 @@ dist/
 build/
 # runtime data — never commit
 storage/obligations/*.jsonl
+!storage/obligations/.gitkeep
 storage/skills/**/*
+!storage/skills/approved/
+!storage/skills/approved/.gitkeep
 !storage/rules/*.yaml
 storage/stele/*.db
-storage/stele/artifacts/
+storage/stele/artifacts/*
+!storage/stele/.gitkeep
+storage/backups/
