@@ -16,4 +16,5 @@ storage/stele/*.db-shm
 storage/stele/*.db-wal
 storage/stele/artifacts/*
 !storage/stele/.gitkeep
+!storage/stele/artifacts/.gitkeep
 storage/backups/
