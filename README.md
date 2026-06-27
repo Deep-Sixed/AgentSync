@@ -1,7 +1,10 @@
 # AgentSync
 
-Rule / Skill / Enforcer / Kanon control plane for skill governance. One MCP
-service, registered once with ContextForge.
+AgentSync is a rule-governed skill acquisition loop for AI agents: it checks
+task rules, finds reusable skills, forces skill authoring when coverage is
+missing, and promotes validated skills back into the shared skill catalog.
+
+One MCP service, registered once with ContextForge.
 
 ## Setup
 
