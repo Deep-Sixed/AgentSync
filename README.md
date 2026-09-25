@@ -7,36 +7,43 @@ missing, and promotes validated skills back into the shared skill catalog.
 One MCP service, registered once with ContextForge.
 
 > **Repo status:** this is the reference implementation for a private
-> deployment. It is **not yet clone-and-run** for outside operators — the
-> promotion substrate (`stele`) resolves from a local path and the MCP server
-> imports it at startup. See [Stele substrate](#stele-substrate) and
+> deployment. The MCP server imports the promotion substrate (`stele`) at
+> startup; see [Stele substrate](#stele-substrate) and
 > [Local deployment](#local-deployment-deep-sixed) before attempting to run it.
 
 ## Stele substrate
 
-The promotion step commits validated `SKILL.md` artifacts to a **Stele
-ledger** — the real EVECOR Stele `LedgerStore`, driven **in-process as a
-library dependency**, not a vendored copy and not a separate service.
+The promotion step records validated `SKILL.md` artifacts in a **Stele
+ledger** — Stele's `LedgerStore` bound to its evidence archive (`BlobStore`),
+driven **in-process as a library dependency**, not a vendored copy and not a
+separate service. Once sealed, the skill is installed into the approved
+catalog (`storage/skills/approved/<dir_name>/SKILL.md`) and the Skill Server
+index is reloaded, so the next lookup for the task finds it.
 
 - `EvecorStelePort` (`src/agentsync/kanon/evecor_stele_port.py`) implements the
   `StelePromotionPort` seam against `stele.ledger.store.LedgerStore`.
 - It bypasses Stele's `ledger_transaction(store, SandboxResult)` write path —
   a promoted `SKILL.md` is a pre-trusted blob with no sandbox run — and calls
-  the store primitives directly: `create_pending(...)` then `commit(...)`.
-- The `storage/stele/ledger.db` schema (`artifact_records`) and the artifact
-  files under `storage/stele/artifacts/` are owned by Stele, not by AgentSync.
+  the store primitives directly: `create_pending(parser=agentsync-kanon, ...)`
+  then `seal(...)`. A sealed record is reported as promotion state `committed`.
+- The obligation's `run_id` is the Stele run id: one ledger record per
+  obligation, found with `store.get_by_run_id(run_id)`.
+- The `storage/stele/ledger.db` schema (`artifact_records`), the evidence
+  archive under `storage/stele/archive/`, and the artifact files under
+  `storage/stele/artifacts/` are owned by Stele, not by AgentSync.
 - Stele is an **optional dependency** (`[stele]` extra). Tests run without it
   via `FakeStelePromotionPort`; the live MCP server requires it (it imports
   `stele.ledger.store` at module load and fails loud if absent).
 
-Stele is currently sourced from a local path (`pyproject.toml`):
+Stele is pinned to the commit whose ledger API the port targets
+(`pyproject.toml`):
 
 ```toml
-stele = ["stele @ file:///mnt/jarvis-data/projects/Stele"]
+stele = ["stele @ git+https://github.com/Deep-Sixed/Stele@10bbf3f24a4cd4b15fc501c57ce58bb2fcf7b54a"]
 ```
 
-Outside operators must repoint this at their own Stele checkout, index, or
-wheel before `--extra stele` or the MCP server will work.
+Moving the pin means re-running `tests/test_evecor_stele_port.py` against the
+new Stele.
 
 ## Setup
 
@@ -99,8 +106,9 @@ systemctl --user status agentsync-mcp.service
 |------|-------|---------|
 | `storage/obligations/obligations.jsonl` | AgentSync | Authoritative obligation lifecycle log |
 | `storage/obligations/pre_obligations.jsonl` | AgentSync | Non-authoritative rule evaluation records |
-| `storage/skills/approved/` | AgentSync | Approved SKILL.md registry |
+| `storage/skills/approved/` | AgentSync | Approved SKILL.md registry (Kanon installs promoted skills here) |
 | `storage/stele/ledger.db` | Stele | Stele `LedgerStore` artifact ledger (`artifact_records`) |
+| `storage/stele/archive/` | Stele | Stele evidence archive (`BlobStore`) the ledger points into |
 | `storage/stele/artifacts/` | Stele | Committed SKILL.md artifact files |
 
 All runtime paths overridable via `AGENTSYNC_*` env vars (see
@@ -118,7 +126,8 @@ git-ignored — the tree ships empty dirs (`.gitkeep`) plus the `rules.yaml` /
 ./scripts/restore-storage.sh storage/backups/agentsync-YYYYMMDD-HHMMSS.tar.gz
 ```
 
-Backups include obligations, the Stele ledger, artifacts, and approved skills.
+Backups include obligations, the Stele ledger and its evidence archive,
+artifacts, and approved skills.
 
 ## ContextForge registration
 
@@ -161,8 +170,9 @@ Concrete paths for the reference deployment on JARVIS:
 # project root
 cd /mnt/jarvis-data/projects/AgentSync
 
-# Stele source (pyproject [stele] extra)
-#   stele @ file:///mnt/jarvis-data/projects/Stele
+# Stele source: the [stele] extra pins a Deep-Sixed/Stele commit; to run
+# against the local checkout instead:
+#   uv pip install -e /mnt/jarvis-data/projects/Stele
 
 # mint the ContextForge agent bearer
 ROUTERCORE_MCP_BEARER_TOKEN="$(/mnt/jarvis-data/projects/EVECOR/bin/evecor-routercore-mcp-bearer)"

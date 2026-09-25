@@ -58,6 +58,7 @@ if [[ -d "$TMP/stele" ]]; then
   mkdir -p "$STORAGE/stele"
   [[ -f "$TMP/stele/ledger.db" ]] && cp -a "$TMP/stele/ledger.db" "$STORAGE/stele/ledger.db" && echo "restored: $STORAGE/stele/ledger.db"
   [[ -d "$TMP/stele/artifacts" ]] && rm -rf "$STORAGE/stele/artifacts" && cp -a "$TMP/stele/artifacts" "$STORAGE/stele/artifacts" && echo "restored: $STORAGE/stele/artifacts"
+  [[ -d "$TMP/stele/archive" ]] && rm -rf "$STORAGE/stele/archive" && cp -a "$TMP/stele/archive" "$STORAGE/stele/archive" && echo "restored: $STORAGE/stele/archive"
 fi
 restore_tree "skills/approved"
 

@@ -14,14 +14,20 @@ Pipeline:
       ↓
     StelePromotionPort.commit_artifact()
       ↓ state=COMMITTED
-    Enforcer.redeem(token, artifact_hash)
+    install into approved/<dir_name>/SKILL.md  (when approved_root is set)
+      ↓ on_installed()  (e.g. SkillServer.reload)
+    Enforcer.redeem(token, artifact_hash, skill_id)
       ↓
     PromotionResult(closure_unblocked=True)
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+from pathlib import Path
+
 from agentsync.enforcer.enforcer import SkillBuilderEnforcer
 from agentsync.enforcer.models import ObligationStatus, SkillObligation
+from agentsync.skills.registry import approved_skill_conflict, install_approved_skill
 from agentsync.skills.skill_schema import ValidationLevel, validate_skill_md
 
 from .models import PromotionResult, PromotionState, SkillCandidate
@@ -37,10 +43,18 @@ class PromotionAdapter:
         stele_port: StelePromotionPort,
         *,
         validation_level: ValidationLevel = ValidationLevel.PROMOTE,
+        approved_root: Path | None = None,
+        on_installed: Callable[[], None] | None = None,
     ) -> None:
+        """approved_root: when set, a committed candidate is installed as
+        approved_root/<dir_name>/SKILL.md so the Skill Server can serve it.
+        on_installed: called after installation (e.g. SkillServer.reload).
+        """
         self._enforcer = enforcer
         self._stele_port = stele_port
         self._level = validation_level
+        self._approved_root = approved_root
+        self._on_installed = on_installed
 
     def promote(self, token: str, candidate: SkillCandidate) -> PromotionResult:
         """Run the full promotion pipeline.
@@ -49,7 +63,8 @@ class PromotionAdapter:
           1. Resolve obligation — must exist and be SUBMITTED.
           2. Validate candidate SKILL.md at the configured level.
           3. Call StelePromotionPort.commit_artifact().
-          4. COMMITTED  → enforcer.redeem() → closure_unblocked=True.
+          4. COMMITTED  → install into approved/ (if configured)
+                        → enforcer.redeem() → closure_unblocked=True.
           5. FAILED     → PromotionResult(closure_unblocked=False).
           6. INVALIDATED→ PromotionResult(closure_unblocked=False).
 
@@ -74,20 +89,34 @@ class PromotionAdapter:
             dir_name=candidate.dir_name,
             file_name=candidate.file_name,
         )
-        if not validation.valid:
+        errors = list(validation.errors)
+        if self._approved_root is not None:
+            conflict = approved_skill_conflict(
+                candidate.dir_name, candidate.content, self._approved_root)
+            if conflict:
+                errors.append(conflict)
+        if errors:
             return PromotionResult(
                 closure_unblocked=False,
                 state=None,
-                validation_errors=validation.errors,
+                validation_errors=errors,
                 note="SKILL.md validation failed; Stele not called",
             )
 
         # Step 3: commit through the port — thread obl.run_id as the ledger join key
         artifact = self._stele_port.commit_artifact(candidate, obl.run_id)
 
-        # Step 4: COMMITTED — redeem and unblock closure
+        # Step 4: COMMITTED — install into the catalog, redeem, unblock closure
         if artifact.state is PromotionState.COMMITTED:
-            self._enforcer.redeem(token, artifact_hash=artifact.artifact_hash)
+            skill_id = None
+            if self._approved_root is not None:
+                install_approved_skill(
+                    candidate.dir_name, candidate.content, self._approved_root)
+                skill_id = candidate.dir_name
+                if self._on_installed is not None:
+                    self._on_installed()
+            self._enforcer.redeem(
+                token, artifact_hash=artifact.artifact_hash, skill_id=skill_id)
             return PromotionResult(
                 closure_unblocked=True,
                 state=PromotionState.COMMITTED,

@@ -16,7 +16,9 @@ from pathlib import Path
 
 import pytest
 
+from stele.archive.store import BlobStore
 from stele.ledger.hashing import sha256_file, sha256_manifest
+from stele.ledger.models import ArtifactState
 from stele.ledger.store import LedgerStore
 
 from agentsync.enforcer.enforcer import SkillBuilderEnforcer
@@ -54,7 +56,7 @@ Use when testing the full PromotionAdapter to EvecorStelePort to LedgerStore pip
 # Process
 1. Submit candidate via PromotionAdapter.promote().
 2. EvecorStelePort writes SKILL.md to disk.
-3. LedgerStore creates a PENDING record then commits it.
+3. LedgerStore creates a PENDING record then seals it.
 4. PromotionAdapter redeems the obligation token.
 
 # Verification
@@ -94,9 +96,13 @@ def artifact_base(tmp_path: Path) -> Path:
     return tmp_path / "artifacts"
 
 
+def _ledger(tmp_path: Path) -> LedgerStore:
+    return LedgerStore(tmp_path / "stele.db", BlobStore(tmp_path / "stele-archive"))
+
+
 @pytest.fixture
 def store(tmp_path: Path) -> LedgerStore:
-    return LedgerStore(tmp_path / "stele.db")
+    return _ledger(tmp_path)
 
 
 @pytest.fixture
@@ -173,21 +179,18 @@ def test_evecor_port_preserves_join_key(
 
 
 # ---------------------------------------------------------------------------
-# 4. Duplicate content behavior is explicit
+# 4. Duplicate content and retries
 # ---------------------------------------------------------------------------
 
-def test_evecor_port_duplicate_content_behavior_is_explicit(
+def test_evecor_port_duplicate_content_gets_one_record_per_run(
     port: EvecorStelePort,
+    store: LedgerStore,
     simple_candidate: SkillCandidate,
 ) -> None:
-    """Same content, different run_ids → both return COMMITTED (duplicate_policy='ignore').
+    """Same content, different run_ids → each run gets its own sealed record.
 
-    Locked behavior:
-      - First commit writes the artifact and creates the COMMITTED record.
-      - Second commit hits the duplicate guard (same artifact_hash already committed)
-        and returns the existing record rather than raising DuplicateArtifactError.
-      - Both calls return state=COMMITTED and preserve their own run_id.
-      - Both calls share the same artifact_hash (content is identical).
+    Stele stores the content once in the archive; each record keeps its own
+    provenance, so both obligations join back to a record by their run_id.
     """
     rid1 = str(uuid.uuid4())
     rid2 = str(uuid.uuid4())
@@ -197,16 +200,91 @@ def test_evecor_port_duplicate_content_behavior_is_explicit(
 
     assert a1.state is PromotionState.COMMITTED
     assert a2.state is PromotionState.COMMITTED
-
-    # Each call preserves its own join key
-    assert a1.run_id == rid1
-    assert a2.run_id == rid2
-
-    # Identical content → identical artifact_hash
+    assert a1.run_id == rid1 and a2.run_id == rid2
     assert a1.artifact_hash == a2.artifact_hash
+    assert a1.record_id != a2.record_id
 
-    # record_id may be the same (existing record returned for duplicate) — that's fine
-    # The important thing is both callers get COMMITTED, not FAILED
+    assert store.get_by_run_id(rid1).record_id == a1.record_id
+    assert store.get_by_run_id(rid2).record_id == a2.record_id
+
+
+def test_evecor_port_retry_same_run_same_content_is_idempotent(
+    port: EvecorStelePort,
+    store: LedgerStore,
+    simple_candidate: SkillCandidate,
+    run_id: str,
+) -> None:
+    """A retry after a crash between seal and redeem returns the sealed record."""
+    first = port.commit_artifact(simple_candidate, run_id)
+    again = port.commit_artifact(simple_candidate, run_id)
+
+    assert again.state is PromotionState.COMMITTED
+    assert again.record_id == first.record_id
+    assert again.artifact_hash == first.artifact_hash
+    assert store.get_by_run_id(run_id).state is ArtifactState.SEALED
+
+
+def test_evecor_port_retry_same_run_different_content_fails(
+    port: EvecorStelePort,
+    store: LedgerStore,
+    simple_candidate: SkillCandidate,
+    run_id: str,
+    artifact_base: Path,
+) -> None:
+    """A run_id is bound to one artifact; different content is refused, not overwritten."""
+    first = port.commit_artifact(simple_candidate, run_id)
+    other = SkillCandidate(content="different content", dir_name="test-skill")
+
+    result = port.commit_artifact(other, run_id)
+
+    assert result.state is PromotionState.FAILED
+    assert result.record_id == first.record_id
+    assert (artifact_base / run_id / "SKILL.md").read_text(encoding="utf-8") == SIMPLE_CONTENT
+    assert store.get_by_run_id(run_id).state is ArtifactState.SEALED
+
+
+def test_evecor_port_resumes_pending_record(
+    port: EvecorStelePort,
+    store: LedgerStore,
+    simple_candidate: SkillCandidate,
+    run_id: str,
+    artifact_base: Path,
+) -> None:
+    """A record left PENDING (crash before seal) is sealed by the retry."""
+    skill_path = artifact_base / run_id / "SKILL.md"
+    skill_path.parent.mkdir(parents=True)
+    skill_path.write_text(SIMPLE_CONTENT, encoding="utf-8")
+    pending = store.create_pending(
+        run_id=run_id,
+        artifact_dir=skill_path.parent,
+        artifact_paths=[skill_path],
+        parser=port._producer,
+        parser_config={"validation_level": "promote"},
+    )
+
+    result = port.commit_artifact(simple_candidate, run_id)
+
+    assert result.state is PromotionState.COMMITTED
+    assert result.record_id == pending.record_id
+    assert store.get(pending.record_id).state is ArtifactState.SEALED
+
+
+def test_evecor_port_records_kanon_as_producer(
+    port: EvecorStelePort,
+    store: LedgerStore,
+    simple_candidate: SkillCandidate,
+    run_id: str,
+) -> None:
+    port.commit_artifact(simple_candidate, run_id)
+    record = store.get_by_run_id(run_id)
+
+    assert record.parser.name == "agentsync-kanon"
+    assert record.parser_config == {
+        "validation_level": "promote",
+        "dir_name": "test-skill",
+        "file_name": "SKILL.md",
+    }
+    assert record.source_hash is None  # no input document was parsed
 
 
 # ---------------------------------------------------------------------------
@@ -241,7 +319,7 @@ def test_promotion_adapter_with_real_evecor_port_redeems_token(
 
     Enforcer SUBMITTED obligation
       → Kanon validates SKILL.md (PROMOTE level)
-      → EvecorStelePort writes file + LedgerStore.create_pending + commit
+      → EvecorStelePort writes file + LedgerStore.create_pending + seal
       → PromotionAdapter redeems token
       → closure_unblocked=True
     """
@@ -258,7 +336,7 @@ def test_promotion_adapter_with_real_evecor_port_redeems_token(
     enforcer.submit_candidate(token, "staging/T-E2E-REAL/SKILL.md")
 
     # Wire the real port
-    store = LedgerStore(tmp_path / "stele.db")
+    store = _ledger(tmp_path)
     real_port = EvecorStelePort(store, tmp_path / "artifacts")
     adapter = PromotionAdapter(enforcer, real_port)
 
@@ -287,6 +365,7 @@ def test_promotion_adapter_with_real_evecor_port_redeems_token(
     assert redeemed.redeemed_artifact_hash == promote_result.artifact.artifact_hash
 
     # Stele ledger confirms the record
-    records = store.find_by_run_id(obl.run_id)
-    assert len(records) == 1
-    assert records[0].artifact_hash == promote_result.artifact.artifact_hash
+    record = store.get_by_run_id(obl.run_id)
+    assert record is not None
+    assert record.state is ArtifactState.SEALED
+    assert record.artifact_hash == promote_result.artifact.artifact_hash

@@ -29,6 +29,7 @@ def test_bootstrap_storage_creates_dirs(tmp_path: Path) -> None:
     assert (storage / "obligations").is_dir()
     assert (storage / "skills" / "approved").is_dir()
     assert (storage / "stele" / "artifacts").is_dir()
+    assert (storage / "stele" / "archive").is_dir()
 
 
 def test_backup_and_restore_roundtrip(tmp_path: Path) -> None:
@@ -46,6 +47,9 @@ def test_backup_and_restore_roundtrip(tmp_path: Path) -> None:
     artifact_dir = storage / "stele" / "artifacts" / "run-1"
     artifact_dir.mkdir(parents=True)
     (artifact_dir / "SKILL.md").write_text("# skill", encoding="utf-8")
+    archive_blob = storage / "stele" / "archive" / "blobs" / "ab" / "abcd"
+    archive_blob.parent.mkdir(parents=True)
+    archive_blob.write_bytes(b"blob")
 
     backup_dir = tmp_path / "backups"
     result = subprocess.run(
@@ -74,6 +78,7 @@ def test_backup_and_restore_roundtrip(tmp_path: Path) -> None:
     assert obl_file.read_text(encoding="utf-8") == '{"token":"t1"}\n'
     assert ledger.read_bytes() == b"sqlite-test"
     assert (artifact_dir / "SKILL.md").read_text(encoding="utf-8") == "# skill"
+    assert archive_blob.read_bytes() == b"blob"
 
 
 def test_main_ensure_storage_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -82,6 +87,7 @@ def test_main_ensure_storage_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("AGENTSYNC_APPROVED_ROOT", str(tmp_path / "skills/approved"))
     monkeypatch.setenv("AGENTSYNC_STELE_DB_PATH", str(tmp_path / "stele/ledger.db"))
     monkeypatch.setenv("AGENTSYNC_ARTIFACTS_BASE", str(tmp_path / "stele/artifacts"))
+    monkeypatch.setenv("AGENTSYNC_STELE_ARCHIVE_ROOT", str(tmp_path / "stele/archive"))
 
     import agentsync.mcp.server as server
 
@@ -91,6 +97,7 @@ def test_main_ensure_storage_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert (tmp_path / "obligations").is_dir()
     assert (tmp_path / "skills" / "approved").is_dir()
     assert (tmp_path / "stele" / "artifacts").is_dir()
+    assert (tmp_path / "stele" / "archive").is_dir()
 
     # Reload with defaults so later tests are unaffected
     for key in (
@@ -99,6 +106,7 @@ def test_main_ensure_storage_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         "AGENTSYNC_APPROVED_ROOT",
         "AGENTSYNC_STELE_DB_PATH",
         "AGENTSYNC_ARTIFACTS_BASE",
+        "AGENTSYNC_STELE_ARCHIVE_ROOT",
     ):
         monkeypatch.delenv(key, raising=False)
     importlib.reload(server)

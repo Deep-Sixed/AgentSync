@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Backup AgentSync mutable state: obligations, Stele ledger, artifacts.
+# Backup AgentSync mutable state: obligations, Stele ledger + evidence archive,
+# artifacts, approved skills.
 #
 # Usage:
 #   ./scripts/backup-storage.sh [output-dir]
@@ -30,6 +31,8 @@ copy_if_exists() {
 copy_if_exists "$STORAGE/obligations" "$TMP/obligations"
 copy_if_exists "$STORAGE/stele/ledger.db" "$TMP/stele/ledger.db"
 copy_if_exists "$STORAGE/stele/artifacts" "$TMP/stele/artifacts"
+# The ledger's records point into the archive; back them up together.
+copy_if_exists "$STORAGE/stele/archive" "$TMP/stele/archive"
 copy_if_exists "$STORAGE/skills/approved" "$TMP/skills/approved"
 
 tar -czf "$ARCHIVE" -C "$TMP" .

@@ -42,6 +42,7 @@ AGENTSYNC_PRE_OBLIGATIONS_PATH  path to pre_obligations.jsonl
 AGENTSYNC_APPROVED_ROOT         path to approved/ skills directory
 AGENTSYNC_OBLIGATIONS_PATH      path to obligations.jsonl
 AGENTSYNC_STELE_DB_PATH         path to Stele SQLite ledger DB
+AGENTSYNC_STELE_ARCHIVE_ROOT    path to the Stele evidence archive (BlobStore)
 AGENTSYNC_ARTIFACTS_BASE        base directory for Stele artifact writes
 AGENTSYNC_TRANSPORT             stdio (default) | http
 AGENTSYNC_PORT                  HTTP port when transport=http (default 8080)
@@ -86,6 +87,10 @@ _STELE_DB_PATH = Path(os.environ.get(
     "AGENTSYNC_STELE_DB_PATH",
     str(_REPO_ROOT / "storage" / "stele" / "ledger.db"),
 ))
+_STELE_ARCHIVE_ROOT = Path(os.environ.get(
+    "AGENTSYNC_STELE_ARCHIVE_ROOT",
+    str(_REPO_ROOT / "storage" / "stele" / "archive"),
+))
 _ARTIFACTS_BASE = Path(os.environ.get(
     "AGENTSYNC_ARTIFACTS_BASE",
     str(_REPO_ROOT / "storage" / "stele" / "artifacts"),
@@ -117,20 +122,27 @@ _SKILL_SERVER = SkillServer(approved_root=_APPROVED_ROOT)
 from agentsync.enforcer.enforcer import SkillBuilderEnforcer
 from agentsync.enforcer.models import EnforcementResult, SkillObligation
 
+# The Enforcer confirms gaps against the same index the skill tools serve, so a
+# skill installed by promotion is visible to both after one reload.
 _ENFORCER = SkillBuilderEnforcer(
-    approved_root=_APPROVED_ROOT,
+    lookup=_SKILL_SERVER,
     obligations_path=_OBLIGATIONS_PATH,
 )
 
 # Kanon + Stele port (stele is an optional dep — fail loud at startup if missing)
+from stele.archive.store import BlobStore
 from stele.ledger.store import LedgerStore
 from agentsync.kanon.evecor_stele_port import EvecorStelePort
 from agentsync.kanon.models import SkillCandidate
 from agentsync.kanon.promotion_adapter import PromotionAdapter
 
-_STORE = LedgerStore(_STELE_DB_PATH)
+_STORE = LedgerStore(_STELE_DB_PATH, BlobStore(_STELE_ARCHIVE_ROOT))
 _PORT = EvecorStelePort(_STORE, _ARTIFACTS_BASE)
-_ADAPTER = PromotionAdapter(_ENFORCER, _PORT)
+_ADAPTER = PromotionAdapter(
+    _ENFORCER, _PORT,
+    approved_root=_APPROVED_ROOT,
+    on_installed=_SKILL_SERVER.reload,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +402,7 @@ def _ensure_storage_dirs() -> None:
     _OBLIGATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
     _APPROVED_ROOT.mkdir(parents=True, exist_ok=True)
     _STELE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _STELE_ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
     _ARTIFACTS_BASE.mkdir(parents=True, exist_ok=True)
 
 

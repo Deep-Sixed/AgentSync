@@ -64,3 +64,18 @@ def find_open_for_task(task_id: str, path: Path | None = None) -> SkillObligatio
         if obl.task_id == task_id and obl.status.value in ("open", "submitted"):
             return obl
     return None
+
+
+def find_redeemed_for_task(task_id: str, path: Path | None = None) -> SkillObligation | None:
+    """Return the most recently redeemed obligation for a task, if any.
+
+    A redeemed obligation names the approved skill it produced; the Enforcer
+    uses it so a task whose skill was already authored is not re-obligated.
+    """
+    latest: SkillObligation | None = None
+    for obl in current_state(path).values():
+        if obl.task_id != task_id or obl.status.value != "redeemed":
+            continue
+        if latest is None or obl.updated_at > latest.updated_at:
+            latest = obl
+    return latest

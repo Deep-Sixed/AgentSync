@@ -66,3 +66,46 @@ def load_approved_skills(approved_root: Path | None = None) -> dict[str, Approve
             raw=raw,
         )
     return out
+
+
+class SkillConflictError(Exception):
+    """An approved skill with this canonical_id already exists with other content."""
+
+
+def approved_skill_conflict(
+    canonical_id: str, content: str, approved_root: Path | None = None,
+) -> str | None:
+    """Return why `content` cannot be installed as `canonical_id`, or None.
+
+    Installing identical content again is allowed (idempotent retry); replacing
+    an existing approved skill with different content is not.
+    """
+    skill_file = (approved_root or DEFAULT_APPROVED_ROOT) / canonical_id / SKILL_FILENAME
+    if skill_file.exists() and skill_file.read_text(encoding="utf-8") != content:
+        return f"approved skill {canonical_id!r} already exists with different content"
+    return None
+
+
+def install_approved_skill(
+    canonical_id: str, content: str, approved_root: Path | None = None,
+) -> Path:
+    """Write content to approved/<canonical_id>/SKILL.md atomically.
+
+    Called by Kanon after Stele seals the candidate; the Skill Server itself
+    never writes here. Raises SkillConflictError instead of overwriting a
+    different approved skill.
+    """
+    if not canonical_id or canonical_id in (".", "..") or Path(canonical_id).name != canonical_id:
+        raise ValueError(f"canonical_id must be a single directory name: {canonical_id!r}")
+    root = approved_root or DEFAULT_APPROVED_ROOT
+    conflict = approved_skill_conflict(canonical_id, content, root)
+    if conflict:
+        raise SkillConflictError(conflict)
+
+    skill_dir = root / canonical_id
+    skill_dir.mkdir(parents=True, exist_ok=True)
+    skill_file = skill_dir / SKILL_FILENAME
+    tmp = skill_dir / f".{SKILL_FILENAME}.tmp"
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(skill_file)
+    return skill_file

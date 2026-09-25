@@ -13,7 +13,7 @@ Proves the complete pipeline with all real components:
   Kanon validates at PROMOTE level
     ↓ valid=True
   EvecorStelePort commits through real LedgerStore
-    ↓ ArtifactState.COMMITTED
+    ↓ ArtifactState.SEALED (reported as PromotionState.COMMITTED)
   PromotionAdapter redeems token
     ↓
   closure_unblocked=True
@@ -27,6 +27,7 @@ from pathlib import Path
 
 import pytest
 
+from stele.archive.store import BlobStore
 from stele.ledger.store import LedgerStore
 
 from agentsync.enforcer.enforcer import SkillBuilderEnforcer
@@ -219,7 +220,7 @@ def test_smoke_full_loop_obligation_to_redemption(tmp_path: Path) -> None:
     assert enforcer.get_obligation(token).status is ObligationStatus.SUBMITTED
 
     # ---- Step 4: Kanon validates → EvecorStelePort commits → token redeemed ------
-    store = LedgerStore(tmp_path / "stele.db")
+    store = LedgerStore(tmp_path / "stele.db", BlobStore(tmp_path / "stele-archive"))
     port = EvecorStelePort(store, tmp_path / "artifacts")
     adapter = PromotionAdapter(enforcer, port)
 
@@ -256,11 +257,9 @@ def test_smoke_full_loop_obligation_to_redemption(tmp_path: Path) -> None:
     assert redeemed.redeemed_artifact_hash == artifact.artifact_hash
 
     # Stele ledger confirms the record via run_id join
-    records = store.find_by_run_id(obl.run_id)
-    assert len(records) == 1, (
-        f"Expected 1 Stele record for run_id={obl.run_id}, got {len(records)}"
-    )
-    assert records[0].artifact_hash == artifact.artifact_hash
+    record = store.get_by_run_id(obl.run_id)
+    assert record is not None, f"No Stele record for run_id={obl.run_id}"
+    assert record.artifact_hash == artifact.artifact_hash
 
     # SKILL.md written to expected path inside tmp_path
     skill_path = tmp_path / "artifacts" / obl.run_id / "SKILL.md"

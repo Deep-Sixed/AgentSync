@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -104,15 +105,22 @@ SKILL_DIR_NAME = "new-birthright-provisioning-skill"
 # ---------------------------------------------------------------------------
 
 def _server_env(tmp_path: Path) -> dict[str, str]:
-    """Env dict that points all mutable state at tmp_path."""
+    """Env dict that points all mutable state at tmp_path.
+
+    approved/ is copied into tmp_path because promotion installs into it.
+    """
+    approved = tmp_path / "approved"
+    if not approved.exists():
+        shutil.copytree(APPROVED_PATH, approved)
     return {
         **os.environ,
         "AGENTSYNC_RULES_PATH": str(RULES_PATH),
         "AGENTSYNC_CAPABILITIES_PATH": str(CAPS_PATH),
         "AGENTSYNC_PRE_OBLIGATIONS_PATH": str(tmp_path / "pre_obligations.jsonl"),
-        "AGENTSYNC_APPROVED_ROOT": str(APPROVED_PATH),
+        "AGENTSYNC_APPROVED_ROOT": str(approved),
         "AGENTSYNC_OBLIGATIONS_PATH": str(tmp_path / "obligations.jsonl"),
         "AGENTSYNC_STELE_DB_PATH": str(tmp_path / "stele.db"),
+        "AGENTSYNC_STELE_ARCHIVE_ROOT": str(tmp_path / "stele-archive"),
         "AGENTSYNC_ARTIFACTS_BASE": str(tmp_path / "artifacts"),
         "AGENTSYNC_TRANSPORT": "stdio",
     }
@@ -256,6 +264,7 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
     Step 4  agentsync_submit_candidate_skill  → status=submitted
     Step 5  agentsync_promote_candidate_skill → closure_unblocked=True
     Step 6  agentsync_get_obligation          → status=redeemed, closure_blocked=False
+    Step 7  the promoted skill is served, and re-enforcing the task → covered
     """
     task_description = (
         "Provision a brand new birthright entitlement set for a new employee identity"
@@ -353,6 +362,20 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
                     final_obl["redeemed_artifact_hash"]
                     == promotion["artifact"]["artifact_hash"]
                 )
+                assert final_obl["redeemed_skill_id"] == SKILL_DIR_NAME
+
+                # ---- Step 7: the loop closes ------------------------------------
+                skills = _parse(await session.call_tool("agentsync_list_skills", {}))
+                if isinstance(skills, dict):  # one skill -> one content block
+                    skills = skills.get("result", [skills])
+                assert SKILL_DIR_NAME in {s["canonical_id"] for s in skills}
+
+                again = _parse(await session.call_tool(
+                    "agentsync_enforce_task",
+                    {"evaluation": evaluation, "task_description": task_description},
+                ))
+                assert again["outcome"] == "covered", again
+                assert again["existing_skill_id"] == SKILL_DIR_NAME
 
                 return promotion, obl["run_id"]
 
@@ -364,3 +387,6 @@ def test_mcp_full_loop(tmp_path: Path) -> None:
         f"SKILL.md not found at expected path: {skill_path}"
     )
     assert skill_path.read_text(encoding="utf-8") == VALID_SKILL_MD
+    installed = tmp_path / "approved" / SKILL_DIR_NAME / "SKILL.md"
+    assert installed.read_text(encoding="utf-8") == VALID_SKILL_MD
+    assert not (APPROVED_PATH / SKILL_DIR_NAME).exists()

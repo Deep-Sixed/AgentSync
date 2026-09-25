@@ -8,6 +8,7 @@ STORAGE="${AGENTSYNC_STORAGE:-$ROOT/storage}"
 mkdir -p \
   "$STORAGE/obligations" \
   "$STORAGE/skills/approved" \
-  "$STORAGE/stele/artifacts"
+  "$STORAGE/stele/artifacts" \
+  "$STORAGE/stele/archive"
 
 exit 0

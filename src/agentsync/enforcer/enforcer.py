@@ -22,7 +22,7 @@ from agentsync.skills.skill_server import SkillQuery
 
 from .lookup import InProcessSkillLookup, SkillLookup
 from .models import EnforcementResult, ObligationStatus, SkillObligation
-from .store import append_obligation, find_open_for_task, get_obligation
+from .store import append_obligation, find_open_for_task, find_redeemed_for_task, get_obligation
 
 
 def _now() -> str:
@@ -79,12 +79,16 @@ class SkillBuilderEnforcer:
 
         # Confirm the gap. The Skill Server's matcher is conservative, so a
         # 'missing' here is trustworthy. Feed it the real task text — without
-        # the description the matcher can't find coverage.
+        # the description the matcher can't find coverage. If this task already
+        # redeemed an obligation, the skill it produced is looked up by id: the
+        # task is covered while that skill is still approved.
         query_text = (task_description or "").strip() or task_id
+        redeemed = find_redeemed_for_task(task_id, self._path)
         result = self._lookup.find_matching_skill(SkillQuery(
             text=query_text,
             skill_family=evaluation.skill_family,
             capability_family=evaluation.capability_family,
+            canonical_id=redeemed.redeemed_skill_id if redeemed else None,
         ))
 
         if result.status == "found":
@@ -134,18 +138,22 @@ class SkillBuilderEnforcer:
         })
         return append_obligation(updated, self._path)
 
-    def redeem(self, token: str, artifact_hash: str) -> SkillObligation:
+    def redeem(
+        self, token: str, artifact_hash: str, skill_id: str | None = None,
+    ) -> SkillObligation:
         """Kanon promoted the candidate through Stele. SUBMITTED -> REDEEMED.
 
-        artifact_hash is Stele's committed ArtifactRecord.artifact_hash — the
-        proof that promotion actually happened through the substrate. Closure
-        is unblocked here.
+        artifact_hash is Stele's sealed ArtifactRecord.artifact_hash — the
+        proof that promotion actually happened through the substrate. skill_id
+        is the approved canonical_id Kanon installed, if any. Closure is
+        unblocked here.
         """
         obl = self._require_status(token, {ObligationStatus.SUBMITTED})
         updated = obl.model_copy(update={
             "status": ObligationStatus.REDEEMED,
             "closure_blocked": False,
             "redeemed_artifact_hash": artifact_hash,
+            "redeemed_skill_id": skill_id,
             "updated_at": _now(),
             "note": "redeemed after Stele commit",
         })

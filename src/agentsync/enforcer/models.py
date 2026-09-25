@@ -49,6 +49,7 @@ class SkillObligation(BaseModel):
     updated_at: str
     candidate_path: str | None = None   # set on SUBMITTED
     redeemed_artifact_hash: str | None = None  # set on REDEEMED (from Stele)
+    redeemed_skill_id: str | None = None       # set on REDEEMED: approved canonical_id
     note: str | None = None
 
 
