@@ -188,6 +188,7 @@ cd /mnt/jarvis-data/projects/AgentSync
 # Stele source (pyproject [stele] extra)
 #   stele @ file:///mnt/jarvis-data/projects/Stele
 
-# mint the ContextForge agent bearer
-ROUTERCORE_MCP_BEARER_TOKEN="$(/mnt/jarvis-data/projects/EVECOR/bin/evecor-routercore-mcp-bearer)"
+# mint and export the ContextForge agent bearer (the script prints an
+# `export ROUTERCORE_MCP_BEARER_TOKEN=…` line, so eval it)
+eval "$(/mnt/jarvis-data/projects/EVECOR/bin/evecor-routercore-mcp-bearer)"
 ```
