@@ -36,6 +36,9 @@ from typing import Any
 
 import anyio
 import pytest
+
+# The server imports stele at startup.
+pytest.importorskip("stele", reason="needs the [stele] extra")
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -46,7 +49,7 @@ from mcp.client.stdio import stdio_client
 REPO = Path(__file__).resolve().parents[1]
 RULES_PATH = REPO / "storage" / "rules" / "rules.yaml"
 CAPS_PATH = REPO / "storage" / "rules" / "capabilities.yaml"
-APPROVED_PATH = REPO / "storage" / "skills" / "approved"
+APPROVED_PATH = REPO / "tests" / "fixtures" / "approved"
 
 # Canonical tool contract — one service, one registration.
 EXPECTED_TOOLS = {

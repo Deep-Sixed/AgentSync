@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("stele", reason="needs the [stele] extra")
+
 from stele.archive.store import BlobStore
 from stele.ledger.store import LedgerStore
 
@@ -45,7 +47,7 @@ from agentsync.rules.rule_resolver import RuleResolver
 REPO = Path(__file__).resolve().parents[1]
 RULES_PATH = REPO / "storage" / "rules" / "rules.yaml"
 CAPS_PATH = REPO / "storage" / "rules" / "capabilities.yaml"
-APPROVED_PATH = REPO / "storage" / "skills" / "approved"
+APPROVED_PATH = REPO / "tests" / "fixtures" / "approved"
 
 # ---------------------------------------------------------------------------
 # Task descriptions

@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("stele", reason="needs the [stele] extra")
+
 from stele.archive.store import BlobStore
 from stele.ledger.hashing import sha256_file, sha256_manifest
 from stele.ledger.models import ArtifactState

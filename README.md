@@ -148,14 +148,20 @@ uv run pytest tests/test_operational_hardening.py -v
 uv run pytest tests/test_agent_facing_a2a_smoke.py -v  # requires ContextForge
 ```
 
-The `test_agent_facing_a2a_smoke.py` and `test_contextforge_smoke.py` suites
-require a running ContextForge and a valid `ROUTERCORE_MCP_BEARER_TOKEN`; the
-rest run standalone.
+The suite runs on a clean clone. Tests read seed skills from the committed
+`tests/fixtures/approved/` tree, never from the git-ignored
+`storage/skills/approved/`, and write only to pytest's `tmp_path`.
+
+- Without the `[stele]` extra, the Stele port, local-service and MCP-service
+  tests skip ("needs the [stele] extra"); with it, they run.
+- The `test_agent_facing_a2a_smoke.py` and `test_contextforge_smoke.py` suites
+  skip unless ContextForge is running and a valid
+  `ROUTERCORE_MCP_BEARER_TOKEN` is available.
 
 ## Frozen checkpoints
 
-Current validated gate: **`v1.1-kanon-operational-hardening` — 98/98**
-(HEAD is this tag plus docs-only commits).
+Last tagged gate: **`v1.1-kanon-operational-hardening` — 98/98**, on the
+reference machine with ContextForge running.
 
 | Tag | Gate | Note |
 |-----|------|------|

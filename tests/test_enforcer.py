@@ -23,7 +23,7 @@ from agentsync.enforcer.store import get_obligation
 from agentsync.skills.skill_server import SkillLookupResult, SkillQuery
 
 REPO = Path(__file__).resolve().parents[1]
-APPROVED = REPO / "storage" / "skills" / "approved"
+APPROVED = REPO / "tests" / "fixtures" / "approved"
 
 
 # --- test doubles -----------------------------------------------------------
