@@ -77,6 +77,7 @@ def test_backup_and_restore_roundtrip(tmp_path: Path) -> None:
 
 
 def test_main_ensure_storage_dirs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("stele", reason="agentsync.mcp.server requires the [stele] extra")
     monkeypatch.setenv("AGENTSYNC_PRE_OBLIGATIONS_PATH", str(tmp_path / "obligations/pre.jsonl"))
     monkeypatch.setenv("AGENTSYNC_OBLIGATIONS_PATH", str(tmp_path / "obligations/obligations.jsonl"))
     monkeypatch.setenv("AGENTSYNC_APPROVED_ROOT", str(tmp_path / "skills/approved"))

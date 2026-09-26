@@ -35,6 +35,10 @@ from typing import Any
 
 import anyio
 import pytest
+
+# The server subprocess imports stele at startup.
+pytest.importorskip("stele", reason="requires the [stele] extra")
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 

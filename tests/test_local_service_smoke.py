@@ -27,6 +27,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("stele", reason="requires the [stele] extra")
+
 from stele.ledger.store import LedgerStore
 
 from agentsync.enforcer.enforcer import SkillBuilderEnforcer

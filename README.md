@@ -25,9 +25,11 @@ library dependency**, not a vendored copy and not a separate service.
   the store primitives directly: `create_pending(...)` then `commit(...)`.
 - The `storage/stele/ledger.db` schema (`artifact_records`) and the artifact
   files under `storage/stele/artifacts/` are owned by Stele, not by AgentSync.
-- Stele is an **optional dependency** (`[stele]` extra). Tests run without it
-  via `FakeStelePromotionPort`; the live MCP server requires it (it imports
-  `stele.ledger.store` at module load and fails loud if absent).
+- Stele is an **optional dependency** (`[stele]` extra). The core and
+  promotion tests run without it via `FakeStelePromotionPort`, and the
+  Stele-backed suites skip when it is not installed. The live MCP server
+  requires it (it imports `stele.ledger.store` at module load and fails loud
+  if absent).
 
 Stele is currently sourced from a local path (`pyproject.toml`):
 
@@ -44,13 +46,27 @@ wheel before `--extra stele` or the MCP server will work.
 git clone https://github.com/Deep-Sixed/AgentSync.git
 cd AgentSync
 
-# core + tests run without Stele (promotion is exercised via the fake port)
-uv sync --extra mcp --extra dev
-uv run pytest -q
+# core + tests without Stele (promotion is exercised via the fake port).
+# Use `uv pip install`, not `uv sync`: there is no committed uv.lock, and
+# locking resolves *every* extra — including the local-path `stele` one,
+# which fails on any machine without /mnt/jarvis-data/projects/Stele.
+uv venv --python 3.14
+uv pip install -e ".[mcp,dev]"
+uv run --no-sync pytest -q
 
-# to run the live MCP service you also need a Stele install (see above)
-uv sync --extra mcp --extra stele --extra dev
+# to run the live MCP service you also need Stele (see above): install your
+# own checkout alongside the project
+uv pip install -e ".[mcp,dev]" /path/to/Stele
 ```
+
+Without Stele, the Stele-backed suites (`test_evecor_stele_port.py`,
+`test_local_service_smoke.py`, `test_mcp_service_smoke.py`, and the server
+import in `test_operational_hardening.py`) are skipped, not failed.
+
+Several matcher tests also expect approved skills (e.g.
+`sailpoint-joiner-provisioning`) under `storage/skills/approved/`. That
+directory is runtime data and is not committed, so on a fresh clone those
+tests fail until the skills are present.
 
 ## Runtime service
 
@@ -139,9 +155,17 @@ uv run pytest tests/test_operational_hardening.py -v
 uv run pytest tests/test_agent_facing_a2a_smoke.py -v  # requires ContextForge
 ```
 
-The `test_agent_facing_a2a_smoke.py` and `test_contextforge_smoke.py` suites
-require a running ContextForge and a valid `ROUTERCORE_MCP_BEARER_TOKEN`; the
-rest run standalone.
+Both ContextForge suites need a running ContextForge with `agentsync-mcp`
+registered, and skip otherwise. They get credentials differently:
+
+- `test_agent_facing_a2a_smoke.py` reads `ROUTERCORE_MCP_BEARER_TOKEN` from
+  the environment, and falls back to minting a JWT itself.
+- `test_contextforge_smoke.py` ignores that variable. It always mints its own
+  JWT, via `docker exec` into the `routercore` container (falling back to the
+  RouterCore venv's `create_jwt_token`), so it needs that docker access or
+  venv on the test host.
+
+The rest run standalone.
 
 ## Frozen checkpoints
 

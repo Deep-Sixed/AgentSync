@@ -10,7 +10,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mcp = ["mcp[cli]>=1.0"]     # FastMCP transport — required to run agentsync.mcp.server
-dev = ["pytest>=8.0", "mcp[cli]>=1.0", "anyio>=4.0"]
+dev = ["pytest>=8.0", "mcp[cli]>=1.0", "anyio>=4.0", "httpx>=0.27"]  # httpx: imported directly by the ContextForge smoke tests
 stele = ["stele @ file:///mnt/jarvis-data/projects/Stele"]
 
 [build-system]
