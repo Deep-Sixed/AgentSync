@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip("stele", reason="requires the [stele] extra")
+
 from stele.ledger.hashing import sha256_file, sha256_manifest
 from stele.ledger.store import LedgerStore
 
